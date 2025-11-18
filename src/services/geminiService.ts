@@ -90,14 +90,26 @@ export async function analyzeReadingBehavior(
       : null,
   };
 
-  // Prepare JSON data sample (first 50 and last 50 points for context, plus summary)
-  const jsonSample = cursorHistory.length > 100
-    ? [
-        ...cursorHistory.slice(0, 50),
-        { note: '... (middle data omitted for brevity) ...' },
-        ...cursorHistory.slice(-50),
-      ]
-    : cursorHistory;
+  // OPTIMIZATION: Reduce JSON data sent to Gemini
+  // Send only a representative sample instead of all points
+  let jsonSample: CursorData[] = cursorHistory;
+  if (cursorHistory.length > 100) {
+    const sampleSize = 100; // Sample 100 points evenly distributed
+    const step = Math.floor(cursorHistory.length / sampleSize);
+    const sampledPoints: CursorData[] = [];
+    
+    // Evenly distribute 100 points from beginning to end
+    for (let i = 0; i < cursorHistory.length && sampledPoints.length < sampleSize; i += step) {
+      sampledPoints.push(cursorHistory[i]);
+    }
+    
+    // Ensure we always include the very last point
+    if (sampledPoints[sampledPoints.length - 1] !== cursorHistory[cursorHistory.length - 1]) {
+      sampledPoints.push(cursorHistory[cursorHistory.length - 1]);
+    }
+    
+    jsonSample = sampledPoints;
+  }
 
   const prompt = `You are an expert in reading comprehension and learning analytics. Analyze the following data from a student reading session and provide actionable feedback tips.
 
@@ -117,9 +129,9 @@ ${title ? `**Title:** ${title}\n\n` : ''}${passage}
 - Reading duration: ${trackingDataSummary.duration.toFixed(1)} seconds
 - Coordinate range: ${trackingDataSummary.coordinateRange ? `X: ${trackingDataSummary.coordinateRange.minX.toFixed(0)}-${trackingDataSummary.coordinateRange.maxX.toFixed(0)}, Y: ${trackingDataSummary.coordinateRange.minY.toFixed(0)}-${trackingDataSummary.coordinateRange.maxY.toFixed(0)}` : 'N/A'}
 
-**JSON DATA (cursor coordinates and timestamps):**
+**JSON DATA (sampled for efficiency - ${jsonSample.length} of ${cursorHistory.length} total points):**
 \`\`\`json
-${JSON.stringify(jsonSample, null, 2)}
+${JSON.stringify(jsonSample)}
 \`\`\`
 
 **YOUR TASK:**
@@ -235,8 +247,27 @@ export async function getPersonalizedQuestionFeedback(
     }
   } : null;
 
-  // Send ALL cursor tracking data (not just a sample)
-  const jsonData = cursorHistory;
+  // OPTIMIZATION: Send only a sample of cursor data instead of ALL points
+  // This dramatically reduces token usage while maintaining analytical value
+  // Strategy: Evenly distribute 100 points from beginning to end
+  let jsonData: CursorData[] = cursorHistory;
+  if (cursorHistory.length > 100) {
+    const sampleSize = 100; // Sample 100 points evenly distributed
+    const step = Math.floor(cursorHistory.length / sampleSize);
+    const sampledPoints: CursorData[] = [];
+    
+    // Evenly distribute 100 points from beginning to end
+    for (let i = 0; i < cursorHistory.length && sampledPoints.length < sampleSize; i += step) {
+      sampledPoints.push(cursorHistory[i]);
+    }
+    
+    // Ensure we always include the very last point
+    if (sampledPoints[sampledPoints.length - 1] !== cursorHistory[cursorHistory.length - 1]) {
+      sampledPoints.push(cursorHistory[cursorHistory.length - 1]);
+    }
+    
+    jsonData = sampledPoints;
+  }
 
   const prompt = `You are an expert reading comprehension tutor. Analyze a student's reading behavior and provide personalized feedback for their quiz answer.
 
@@ -265,9 +296,9 @@ ${trackingDataSummary ? `
 - Reading duration: ${trackingDataSummary.duration.toFixed(1)} seconds
 - Coordinate range: X: ${trackingDataSummary.coordinateRange.minX.toFixed(0)}-${trackingDataSummary.coordinateRange.maxX.toFixed(0)}, Y: ${trackingDataSummary.coordinateRange.minY.toFixed(0)}-${trackingDataSummary.coordinateRange.maxY.toFixed(0)}
 
-**CURSOR TRACKING DATA (complete dataset):**
+**CURSOR TRACKING DATA (sampled for efficiency - ${jsonData.length} of ${cursorHistory.length} total points):**
 \`\`\`json
-${JSON.stringify(jsonData, null, 2)}
+${JSON.stringify(jsonData)}
 \`\`\`
 
 **IMPORTANT:** The cursor coordinates are screen coordinates. To understand what parts of the passage were actually read, you MUST analyze the heatmap image (if available). The heatmap shows the visual distribution of cursor time spent over the passage text.
@@ -328,9 +359,9 @@ Just provide the feedback text directly, no prefix or formatting.`;
 
     // Log data being sent to Gemini
     console.log('📊 Sending to Gemini for personalized feedback:');
-    console.log(`  - Cursor history points: ${cursorHistory.length}`);
+    console.log(`  - Cursor history points: ${cursorHistory.length} (sending ${jsonData.length} evenly distributed points)`);
     console.log(`  - Screenshot available: ${screenshot ? 'Yes' : 'No'}`);
-    console.log(`  - JSON data size: ${jsonData.length} entries (ALL data sent)`);
+    console.log(`  - Token optimization: ${cursorHistory.length > 100 ? `Sampled ${jsonData.length} evenly distributed points from ${cursorHistory.length} total` : 'No sampling needed'}`);
 
     // Add screenshot if available
     if (screenshot) {
@@ -353,7 +384,7 @@ Just provide the feedback text directly, no prefix or formatting.`;
     if (cursorHistory.length === 0) {
       console.log('  ⚠️ No cursor tracking data - feedback will be based on passage and question only');
     } else {
-      console.log(`  ✅ Cursor tracking data included (${jsonData.length} total points - ALL data sent)`);
+      console.log(`  ✅ Cursor tracking data included (${jsonData.length} evenly distributed points sent)`);
     }
 
     const result = await model.generateContent(parts);

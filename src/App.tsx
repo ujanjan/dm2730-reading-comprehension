@@ -97,7 +97,10 @@ export default function App() {
     }
 
     try {
-      const pixelRatio = window.devicePixelRatio || 1;
+      // OPTIMIZATION: Limit pixel ratio to reduce image size
+      // Use max 1.5x instead of full device pixel ratio (which can be 2-3x on retina)
+      // This significantly reduces file size while maintaining readability
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
       const rect = passageRef.current.getBoundingClientRect();
       
       // Capture using html-to-image (supports oklch natively)
@@ -143,7 +146,15 @@ export default function App() {
         }
       }
 
-      const dataUrl = canvas.toDataURL('image/png');
+      // OPTIMIZATION: Use JPEG instead of PNG for much smaller file size
+      // Quality 0.85 provides good balance between quality and file size
+      // PNG: ~500KB-2MB, JPEG (0.85): ~50-150KB (10-20x smaller!)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      
+      // Log size for monitoring
+      const sizeKB = Math.round((dataUrl.length * 0.75) / 1024); // Approximate base64 to bytes
+      console.log(`📸 Screenshot captured: ${sizeKB}KB (JPEG quality 0.85, pixelRatio ${pixelRatio.toFixed(1)})`);
+      
       setScreenshot(dataUrl);
       return dataUrl;
     } catch (error) {
