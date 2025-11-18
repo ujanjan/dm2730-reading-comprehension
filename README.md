@@ -119,6 +119,79 @@ npm run build
 
 The production build will be created in the `dist/` directory.
 
+## Deployment to Cloudflare Pages
+
+This project is configured for deployment to Cloudflare Pages. Follow these steps:
+
+### Option 1: Deploy via Cloudflare Dashboard (Recommended)
+
+1. **Push your code to GitHub/GitLab/Bitbucket**
+   ```bash
+   git add .
+   git commit -m "Configure for Cloudflare Pages"
+   git push origin main
+   ```
+
+2. **Connect your repository to Cloudflare Pages**
+   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+   - Navigate to **Pages** → **Create a project**
+   - Connect your Git repository
+   - Select the repository and branch (usually `main`)
+
+3. **Configure build settings**
+   - **Framework preset**: Vite
+   - **Build command**: `npm run build`
+   - **Build output directory**: `dist`
+   - **Root directory**: `/` (leave as default)
+
+4. **Add environment variables**
+   - Go to **Settings** → **Environment variables**
+   - Add the following variable:
+     - **Variable name**: `VITE_GEMINI_API_KEY`
+     - **Value**: Your Gemini API key
+   - Make sure to add it to both **Production** and **Preview** environments
+
+5. **Deploy**
+   - Click **Save and Deploy**
+   - Your site will be available at `https://<your-project-name>.pages.dev`
+
+### Option 2: Deploy via Wrangler CLI
+
+1. **Install Wrangler CLI** (if not already installed)
+   ```bash
+   npm install -g wrangler
+   ```
+
+2. **Login to Cloudflare**
+   ```bash
+   wrangler login
+   ```
+
+3. **Build the project**
+   ```bash
+   npm run build
+   ```
+
+4. **Deploy to Cloudflare Pages**
+   ```bash
+   wrangler pages deploy dist --project-name=reading-comprehension-app
+   ```
+
+### Environment Variables
+
+Make sure to set the following environment variable in Cloudflare Pages:
+- `VITE_GEMINI_API_KEY`: Your Google Gemini API key
+
+You can set these in the Cloudflare Dashboard under **Pages** → **Your Project** → **Settings** → **Environment variables**.
+
+### Custom Domain
+
+To use a custom domain:
+1. Go to your project in Cloudflare Pages
+2. Navigate to **Custom domains**
+3. Click **Set up a custom domain**
+4. Follow the instructions to configure your domain
+
 ## Development Notes
 
 - The app uses cursor tracking data to analyze reading behavior

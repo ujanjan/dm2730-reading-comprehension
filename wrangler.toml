@@ -1,0 +1,9 @@
+# Cloudflare Pages configuration
+# This file is optional but helpful for local development and deployment
+
+name = "read-the-text"
+compatibility_date = "2025-11-18"
+
+[env.production]
+# Production environment settings
+
