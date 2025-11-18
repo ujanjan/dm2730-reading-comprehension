@@ -1,10 +1,11 @@
-import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useEffect, useRef, forwardRef, useImperativeHandle, useState } from 'react';
 import { CursorData } from './CursorTracker';
 
 interface CursorHeatmapProps {
   cursorHistory: CursorData[];
   opacity?: number;
   radius?: number;
+  containerRef?: React.RefObject<HTMLElement>;
 }
 
 export interface CursorHeatmapHandle {
@@ -13,8 +14,18 @@ export interface CursorHeatmapHandle {
 }
 
 export const CursorHeatmap = forwardRef<CursorHeatmapHandle, CursorHeatmapProps>(
-  function CursorHeatmap({ cursorHistory, opacity = 0.6, radius = 40 }, ref) {
+  function CursorHeatmap({ cursorHistory, opacity = 0.6, radius = 40, containerRef }, ref) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [canvasStyle, setCanvasStyle] = useState<React.CSSProperties>({
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none',
+      zIndex: 9998,
+      opacity: opacity
+    });
 
     useImperativeHandle(ref, () => ({
       saveImage() {
@@ -49,8 +60,26 @@ export const CursorHeatmap = forwardRef<CursorHeatmapHandle, CursorHeatmapProps>
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      // Get container bounds if provided, otherwise use full viewport
+      let containerBounds = {
+        left: 0,
+        top: 0,
+        width: window.innerWidth,
+        height: window.innerHeight
+      };
+
+      if (containerRef?.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        containerBounds = {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height
+        };
+      }
+
+      canvas.width = containerBounds.width;
+      canvas.height = containerBounds.height;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -62,10 +91,22 @@ export const CursorHeatmap = forwardRef<CursorHeatmapHandle, CursorHeatmapProps>
       const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) return;
 
-      cursorHistory.forEach(point => {
+      // Filter cursor points to only those within the container bounds
+      const pointsInBounds = cursorHistory.filter(point => {
+        return point.x >= containerBounds.left &&
+               point.x <= containerBounds.left + containerBounds.width &&
+               point.y >= containerBounds.top &&
+               point.y <= containerBounds.top + containerBounds.height;
+      });
+
+      pointsInBounds.forEach(point => {
+        // Convert global coordinates to container-relative coordinates
+        const relativeX = point.x - containerBounds.left;
+        const relativeY = point.y - containerBounds.top;
+
         const gradient = tempCtx.createRadialGradient(
-          point.x, point.y, 0,
-          point.x, point.y, radius
+          relativeX, relativeY, 0,
+          relativeX, relativeY, radius
         );
 
         const intensity = 0.05;
@@ -74,7 +115,7 @@ export const CursorHeatmap = forwardRef<CursorHeatmapHandle, CursorHeatmapProps>
         gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
         tempCtx.fillStyle = gradient;
-        tempCtx.fillRect(point.x - radius, point.y - radius, radius * 2, radius * 2);
+        tempCtx.fillRect(relativeX - radius, relativeY - radius, radius * 2, radius * 2);
       });
 
       const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
@@ -123,34 +164,81 @@ export const CursorHeatmap = forwardRef<CursorHeatmapHandle, CursorHeatmapProps>
 
       ctx.putImageData(imageData, 0, 0);
 
-    }, [cursorHistory, radius]);
+    }, [cursorHistory, radius, containerRef]);
 
     useEffect(() => {
-      const resize = () => {
+      const updateCanvasSizeAndPosition = () => {
         const canvas = canvasRef.current;
-        if (canvas) {
-          canvas.width = window.innerWidth;
-          canvas.height = window.innerHeight;
+        if (!canvas) return;
+
+        let containerBounds = {
+          left: 0,
+          top: 0,
+          width: window.innerWidth,
+          height: window.innerHeight
+        };
+
+        if (containerRef?.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          containerBounds = {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height
+          };
         }
+
+        canvas.width = containerBounds.width;
+        canvas.height = containerBounds.height;
+
+        // Update canvas style position
+        setCanvasStyle({
+          position: 'fixed',
+          top: containerBounds.top,
+          left: containerBounds.left,
+          width: containerBounds.width,
+          height: containerBounds.height,
+          pointerEvents: 'none',
+          zIndex: 9998,
+          opacity: opacity
+        });
+      };
+
+      const resize = () => {
+        updateCanvasSizeAndPosition();
+      };
+
+      // Use ResizeObserver to watch for container size changes
+      let resizeObserver: ResizeObserver | null = null;
+      if (containerRef?.current) {
+        resizeObserver = new ResizeObserver(() => {
+          updateCanvasSizeAndPosition();
+        });
+        resizeObserver.observe(containerRef.current);
+      }
+
+      // Also update on scroll to handle position changes
+      const handleScroll = () => {
+        updateCanvasSizeAndPosition();
       };
 
       window.addEventListener('resize', resize);
-      return () => window.removeEventListener('resize', resize);
-    }, []);
+      window.addEventListener('scroll', handleScroll, true);
+      updateCanvasSizeAndPosition();
+
+      return () => {
+        window.removeEventListener('resize', resize);
+        window.removeEventListener('scroll', handleScroll, true);
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+        }
+      };
+    }, [containerRef, opacity]);
 
     return (
       <canvas
         ref={canvasRef}
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-          zIndex: 9998,
-          opacity: opacity
-        }}
+        style={canvasStyle}
       />
     );
   }

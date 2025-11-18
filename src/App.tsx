@@ -5,7 +5,7 @@ import { CursorTrackingData } from './components/CursorTrackingData';
 import { CursorHeatmap, CursorHeatmapHandle } from './components/CursorHeatmap';
 //import { RealtimeCursorIndicator } from './components/RealtimeCursorIndicator';
 import { Button } from './components/ui/button';
-import { MousePointer2, MousePointerClick, Flame, Camera } from 'lucide-react';
+import { MousePointer2, MousePointerClick } from 'lucide-react';
 import { toCanvas } from 'html-to-image';
 
 const samplePassage = `A Flowery Past
@@ -150,62 +150,24 @@ export default function App() {
             </p>
           </div>
           
-          <div className="flex gap-2">
-            {trackingEnabled && (
+          <Button
+            variant={trackingEnabled ? 'destructive' : 'default'}
+            size="sm"
+            onClick={handleToggleTracking}
+            className="text-xs"
+          >
+            {trackingEnabled ? (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowHeatmap(!showHeatmap)}
-                  className="text-xs"
-                >
-                  <Flame className="h-4 w-4 mr-1" />
-                  {showHeatmap ? 'Hide' : 'Show'} Heatmap
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => heatmapRef.current?.saveImage()}
-                  className="text-xs"
-                  disabled={cursorHistory.length === 0}
-                >
-                  <Flame className="h-4 w-4 mr-1" />
-                  Save Heatmap
-                </Button>
-
-                {showHeatmap && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCaptureScreenshot}
-                    className="text-xs"
-                  >
-                    <Camera className="h-4 w-4 mr-1" />
-                    Save Screenshot
-                  </Button>
-                )}
+                <MousePointerClick className="h-4 w-4 mr-1" />
+                Stop Tracking
+              </>
+            ) : (
+              <>
+                <MousePointer2 className="h-4 w-4 mr-1" />
+                Start Cursor Tracking
               </>
             )}
-            <Button
-              variant={trackingEnabled ? 'destructive' : 'default'}
-              size="sm"
-              onClick={handleToggleTracking}
-              className="text-xs"
-            >
-              {trackingEnabled ? (
-                <>
-                  <MousePointerClick className="h-4 w-4 mr-1" />
-                  Stop Tracking
-                </>
-              ) : (
-                <>
-                  <MousePointer2 className="h-4 w-4 mr-1" />
-                  Start Cursor Tracking
-                </>
-              )}
-            </Button>
-          </div>
+          </Button>
         </div>
         
         <div className="flex-1 min-h-0 flex gap-3">
@@ -218,11 +180,16 @@ export default function App() {
           </div>
           
           {trackingEnabled && (
-            <div className="w-56 flex-shrink-0">
+            <div className="w-72 flex-shrink-0">
               <CursorTrackingData 
                 cursorHistory={cursorHistory}
                 onClear={clearCursorHistory}
                 screenshot={screenshot}
+                showHeatmap={showHeatmap}
+                onToggleHeatmap={() => setShowHeatmap(!showHeatmap)}
+                onSaveHeatmap={() => heatmapRef.current?.saveImage()}
+                onSaveScreenshot={handleCaptureScreenshot}
+                heatmapRef={heatmapRef}
               />
             </div>
           )}
@@ -240,6 +207,7 @@ export default function App() {
           cursorHistory={cursorHistory}
           opacity={0.6}
           radius={40}
+          containerRef={passageRef}
         />
       )}
     </div>

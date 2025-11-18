@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { Download, Eye, EyeOff, Trash2, MousePointer2 } from 'lucide-react';
+import { Download, Eye, EyeOff, Trash2, MousePointer2, Flame, Camera } from 'lucide-react';
 import { CursorData } from './CursorTracker';
+import { CursorHeatmapHandle } from './CursorHeatmap';
 import {
   Dialog,
   DialogContent,
@@ -15,9 +16,23 @@ interface CursorTrackingDataProps {
   cursorHistory: CursorData[];
   onClear: () => void;
   screenshot: string | null;
+  showHeatmap: boolean;
+  onToggleHeatmap: () => void;
+  onSaveHeatmap: () => void;
+  onSaveScreenshot: () => void;
+  heatmapRef: React.RefObject<CursorHeatmapHandle | null>;
 }
 
-export function CursorTrackingData({ cursorHistory, onClear, screenshot }: CursorTrackingDataProps) {
+export function CursorTrackingData({ 
+  cursorHistory, 
+  onClear, 
+  screenshot,
+  showHeatmap,
+  onToggleHeatmap,
+  onSaveHeatmap,
+  onSaveScreenshot,
+  heatmapRef
+}: CursorTrackingDataProps) {
   const [showData, setShowData] = useState(false);
   const [showScreenshotDialog, setShowScreenshotDialog] = useState(false);
 
@@ -82,10 +97,50 @@ export function CursorTrackingData({ cursorHistory, onClear, screenshot }: Curso
 
   return (
     <Card className="p-3 h-full flex flex-col">
+      {/* Controls Section */}
+      <div className="mb-3 pb-3 border-b border-gray-200 flex-shrink-0">
+        <h3 className="text-sm font-semibold mb-2 text-gray-700">Controls</h3>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleHeatmap}
+            className="text-xs w-full justify-start"
+          >
+            <Flame className="h-4 w-4 mr-2" />
+            {showHeatmap ? 'Hide' : 'Show'} Heatmap
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSaveHeatmap}
+            className="text-xs w-full justify-start"
+            disabled={cursorHistory.length === 0}
+          >
+            <Flame className="h-4 w-4 mr-2" />
+            Save Heatmap
+          </Button>
+
+          {showHeatmap && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onSaveScreenshot}
+              className="text-xs w-full justify-start"
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              Save Screenshot
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Cursor Data Section */}
       <div className="flex items-center justify-between mb-2 flex-shrink-0">
         <div className="flex items-center gap-2">
           <MousePointer2 className="h-4 w-4 text-blue-600" />
-          <h3 className="text-sm">Cursor Data</h3>
+          <h3 className="text-sm font-semibold text-gray-700">Cursor Data</h3>
         </div>
         <Button
           variant="ghost"
