@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { ReadingComprehension } from './components/ReadingComprehension';
+import React, { useState, useRef, useEffect } from 'react';
+import { ReadingComprehension, ReadingComprehensionHandle } from './components/ReadingComprehension';
 import { CursorTracker, CursorData } from './components/CursorTracker';
 import { CursorTrackingData } from './components/CursorTrackingData';
 import { CursorHeatmap, CursorHeatmapHandle } from './components/CursorHeatmap';
@@ -72,12 +72,15 @@ export default function App() {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [quizComplete, setQuizComplete] = useState(false);
   //const [showRealtimeIndicator, setShowRealtimeIndicator] = useState(true);
 
   // 🔹 Ref to control the CursorHeatmap (for saving image)
   const heatmapRef = useRef<CursorHeatmapHandle | null>(null);
-  // 🔹 Ref to the passage container for screenshot capture
-  const passageRef = useRef<HTMLDivElement>(null);
+  // 🔹 Ref to control the ReadingComprehension component
+  const readingComprehensionRef = useRef<ReadingComprehensionHandle | null>(null);
+  // 🔹 Ref to the passage container for CursorHeatmap
+  const passageRef = useRef<HTMLDivElement | null>(null);
 
   const handleCursorData = (data: CursorData) => {
     setCursorHistory(prev => [...prev, data]);
@@ -87,12 +90,43 @@ export default function App() {
     setCursorHistory([]);
   };
 
+  // Sync passageRef with ReadingComprehension's passage element
+  useEffect(() => {
+    const element = readingComprehensionRef.current?.getPassageElement();
+    if (element) {
+      passageRef.current = element;
+    }
+  });
+
   const handleToggleTracking = () => {
     setTrackingEnabled(!trackingEnabled);
   };
 
+  const handleRestartQuiz = () => {
+    // Reset the quiz component state
+    if (readingComprehensionRef.current) {
+      readingComprehensionRef.current.reset();
+    }
+    // Clear cursor history
+    setCursorHistory([]);
+    // Reset tracking
+    setTrackingEnabled(false);
+    // Reset quiz completion state
+    setQuizComplete(false);
+    // Clear screenshot
+    setScreenshot(null);
+    // Update passageRef after reset
+    setTimeout(() => {
+      const element = readingComprehensionRef.current?.getPassageElement();
+      if (element) {
+        passageRef.current = element;
+      }
+    }, 0);
+  };
+
   const handleCaptureScreenshot = async (): Promise<string | null> => {
-    if (!passageRef.current) {
+    const passageElement = readingComprehensionRef.current?.getPassageElement();
+    if (!passageElement) {
       return null;
     }
 
@@ -101,10 +135,10 @@ export default function App() {
       // Use max 1.5x instead of full device pixel ratio (which can be 2-3x on retina)
       // This significantly reduces file size while maintaining readability
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
-      const rect = passageRef.current.getBoundingClientRect();
+      const rect = passageElement.getBoundingClientRect();
       
       // Capture using html-to-image (supports oklch natively)
-      const canvas = await toCanvas(passageRef.current, {
+      const canvas = await toCanvas(passageElement, {
         backgroundColor: '#ffffff',
         pixelRatio: pixelRatio,
       });
@@ -177,12 +211,17 @@ export default function App() {
           
           <div className="flex items-center gap-2">
             <Button
-              variant={trackingEnabled ? 'destructive' : 'default'}
+              variant={trackingEnabled ? 'destructive' : quizComplete ? 'default' : 'default'}
               size="sm"
-              onClick={handleToggleTracking}
+              onClick={quizComplete ? handleRestartQuiz : handleToggleTracking}
               className="text-xs"
             >
-              {trackingEnabled ? (
+              {quizComplete ? (
+                <>
+                  <MousePointer2 className="h-4 w-4 mr-1" />
+                  Restart The Quiz
+                </>
+              ) : trackingEnabled ? (
                 <>
                   <MousePointerClick className="h-4 w-4 mr-1" />
                   Stop The Quiz
@@ -214,14 +253,17 @@ export default function App() {
         <div className="flex-1 min-h-0 flex gap-3 min-w-0">
           <div className="flex-1 min-h-0 min-w-0">
             <ReadingComprehension 
-              ref={passageRef}
+              ref={readingComprehensionRef}
               title={sampleTitle}
               passage={samplePassage} 
               questions={sampleQuestions}
               cursorHistory={cursorHistory}
               screenshot={screenshot}
               onCaptureScreenshot={handleCaptureScreenshot}
-              onQuizComplete={() => setTrackingEnabled(false)}
+              onQuizComplete={() => {
+                setTrackingEnabled(false);
+                setQuizComplete(true);
+              }}
             />
           </div>
           

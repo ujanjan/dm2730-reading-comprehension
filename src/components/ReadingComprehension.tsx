@@ -1,4 +1,4 @@
-import { useState, useRef, forwardRef } from "react";
+import { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -23,7 +23,13 @@ interface ReadingComprehensionProps {
   onQuizComplete?: () => void;
 }
 
-export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehensionProps>(
+export interface ReadingComprehensionHandle {
+  reset: () => void;
+  isComplete: () => boolean;
+  getPassageElement: () => HTMLDivElement | null;
+}
+
+export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, ReadingComprehensionProps>(
   function ReadingComprehension({
     title,
     passage,
@@ -48,12 +54,39 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
     const [quizStartTime, setQuizStartTime] = useState<Date | null>(null);
     const [quizEndTime, setQuizEndTime] = useState<Date | null>(null);
     const [wrongAttempts, setWrongAttempts] = useState<Record<number, number>>({});
+    const [quizFinished, setQuizFinished] = useState(false);
     const passageRef = useRef<HTMLDivElement>(null);
 
     const currentQuestion = questions[currentQuestionIndex];
     const isCurrentQuestionCorrectlyAnswered = correctlyAnsweredQuestions.includes(currentQuestion.id);
     const allQuestionsAnswered =
       correctlyAnsweredQuestions.length === questions.length;
+    // Only show completion screen if all questions are answered AND Finish was clicked
+    const showCompletionScreen = allQuestionsAnswered && quizFinished;
+
+    // Expose reset method and completion status via ref
+    useImperativeHandle(ref, () => ({
+      reset() {
+        setCurrentQuestionIndex(0);
+        setSelectedAnswer("");
+        setShowFeedback(false);
+        setFeedbackText("");
+        setIsLoadingFeedback(false);
+        setCurrentSubmissionCorrect(false);
+        setScore(0);
+        setCorrectlyAnsweredQuestions([]);
+        setQuizStartTime(null);
+        setQuizEndTime(null);
+        setWrongAttempts({});
+        setQuizFinished(false);
+      },
+      isComplete() {
+        return allQuestionsAnswered;
+      },
+      getPassageElement() {
+        return passageRef.current;
+      }
+    }));
 
     const handleSubmit = async () => {
       if (!selectedAnswer || isLoadingFeedback) return;
@@ -124,15 +157,6 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
           const newCorrectlyAnswered = [...correctlyAnsweredQuestions, currentQuestion.id];
           setScore(score + 1);
           setCorrectlyAnsweredQuestions(newCorrectlyAnswered);
-          
-          // Stop the timer when all questions are answered
-          if (newCorrectlyAnswered.length === questions.length && quizEndTime === null) {
-            setQuizEndTime(new Date());
-            // Automatically stop the quiz tracking
-            if (onQuizComplete) {
-              onQuizComplete();
-            }
-          }
         }
       }
     };
@@ -145,6 +169,19 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
       setCurrentSubmissionCorrect(false);
       if (currentQuestionIndex < questions.length - 1) {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
+      }
+    };
+
+    const handleFinish = () => {
+      // Mark quiz as finished
+      setQuizFinished(true);
+      // Stop the timer when finishing the quiz
+      if (quizEndTime === null) {
+        setQuizEndTime(new Date());
+      }
+      // Automatically stop the quiz tracking
+      if (onQuizComplete) {
+        onQuizComplete();
       }
     };
 
@@ -211,7 +248,7 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
             </div>
           </div>
 
-          {!allQuestionsAnswered ? (
+          {!showCompletionScreen ? (
             <div className="flex-1 flex flex-col overflow-hidden min-w-0">
               <div className="flex-1 overflow-y-auto min-w-0">
                 <p className="mb-3 text-sm break-words min-w-0 max-w-full" style={{ wordBreak: 'break-word', overflowWrap: 'break-word' }}>
@@ -329,16 +366,21 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
                     Submit
                   </Button>
                 ) : isCurrentQuestionCorrectlyAnswered ? (
-                  <Button
-                    onClick={handleNext}
-                    disabled={
-                      currentQuestionIndex ===
-                      questions.length - 1
-                    }
-                    className="flex-1 text-xs py-2"
-                  >
-                    Next
-                  </Button>
+                  currentQuestionIndex === questions.length - 1 ? (
+                    <Button
+                      onClick={handleFinish}
+                      className="flex-1 text-xs py-2"
+                    >
+                      Finish
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleNext}
+                      className="flex-1 text-xs py-2"
+                    >
+                      Next
+                    </Button>
+                  )
                 ) : (
                   <Button
                     onClick={handleTryAgain}
