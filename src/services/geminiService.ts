@@ -68,7 +68,7 @@ export async function analyzeReadingBehavior(
     };
   }
 
-  // Prepare the prompt
+  // Prepare tracking data summary
   const trackingDataSummary = {
     totalPoints: cursorHistory.length,
     duration: cursorHistory.length > 0
@@ -84,28 +84,67 @@ export async function analyzeReadingBehavior(
       : null,
   };
 
-  const prompt = `You are analyzing reading comprehension behavior based on:
-1. The reading passage text
-2. A heatmap screenshot showing where the reader focused their attention (cursor movements)
-3. Cursor tracking data with coordinates
+  // Prepare JSON data sample (first 50 and last 50 points for context, plus summary)
+  const jsonSample = cursorHistory.length > 100
+    ? [
+        ...cursorHistory.slice(0, 50),
+        { note: '... (middle data omitted for brevity) ...' },
+        ...cursorHistory.slice(-50),
+      ]
+    : cursorHistory;
 
-Tracking Data Summary:
+  const prompt = `You are an expert in reading comprehension and learning analytics. Analyze the following data from a student reading session and provide actionable feedback tips.
+
+**TEXT BEING READ:**
+
+${passage}
+
+**VISUAL ATTENTION DATA:**
+
+- A heatmap image showing cursor movement patterns${screenshot ? ' (attached)' : ' (not available)'}
+- JSON file containing cursor coordinates (x, y) and timestamps in milliseconds (see below)
+- The heatmap intensity (green/bright areas) indicates where the cursor spent more time
+- Each JSON entry represents a cursor position at a specific moment
+
+**CURSOR TRACKING DATA SUMMARY:**
 - Total cursor points: ${trackingDataSummary.totalPoints}
 - Reading duration: ${trackingDataSummary.duration.toFixed(1)} seconds
 - Coordinate range: ${trackingDataSummary.coordinateRange ? `X: ${trackingDataSummary.coordinateRange.minX.toFixed(0)}-${trackingDataSummary.coordinateRange.maxX.toFixed(0)}, Y: ${trackingDataSummary.coordinateRange.minY.toFixed(0)}-${trackingDataSummary.coordinateRange.maxY.toFixed(0)}` : 'N/A'}
 
-Reading Passage:
-${passage}
+**JSON DATA (cursor coordinates and timestamps):**
+\`\`\`json
+${JSON.stringify(jsonSample, null, 2)}
+\`\`\`
 
-Please analyze the heatmap (if provided) and cursor tracking data to provide brief, actionable tips for improving reading comprehension. Focus on:
-- Areas where the reader spent more/less time (based on heatmap intensity)
-- Reading patterns and potential issues
-- Specific suggestions for better comprehension
+**YOUR TASK:**
 
-Keep tips brief and to the point (2-4 bullet points or short paragraphs).`;
+Based on the heatmap, cursor tracking data, and reading passage, provide 4-6 concise actionable feedback tips for the student.
+
+**OUTPUT FORMAT:**
+
+Start with "Actionable Feedback Tips:" followed by the tips. Each tip should:
+- Start with "✓" symbol
+- Be 1-2 sentences maximum
+- Begin with a specific observation from the data
+- Follow with a brief, encouraging recommendation
+- Be direct and concise - no verbose explanations
+
+Example format:
+"Actionable Feedback Tips:
+
+✓ The first paragraph received a lot of attention but the paragraph about 'ancient DNA' was skimmed. The middle paragraphs often include key details about how researchers did their work. Try to spend more time on the second paragraph next time!
+
+✓ You spent extra time at the beginning and end. This suggests you are good at summarizing and paying attention to conclusions, but the middle parts are important as well! Consider spending a little more time on those."
+
+**IMPORTANT:**
+- Keep tips SHORT and CONCISE - 1-2 sentences each
+- Be specific and data-driven, referencing actual content from the passage
+- Focus on improvement, not criticism
+- No verbose explanations - get straight to the point
+- Prioritize the most impactful insights`;
 
   try {
-    const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
+    const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
       { text: prompt },
     ];
 
