@@ -58,14 +58,19 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
       setShowFeedback(true);
       setIsLoadingFeedback(true);
 
-      // Capture screenshot if available (for personalized feedback)
+      // Always capture a fresh screenshot to include latest cursor movements
+      // This ensures the heatmap reflects all cursor activity up to this point
       let currentScreenshot = screenshot;
-      if (onCaptureScreenshot && !currentScreenshot) {
+      if (onCaptureScreenshot) {
         try {
           currentScreenshot = await onCaptureScreenshot();
           console.log('📸 Screenshot captured for personalized feedback:', currentScreenshot ? 'Success' : 'Failed');
         } catch (error) {
           console.warn('Failed to capture screenshot for feedback:', error);
+          // Fallback to existing screenshot if capture fails
+          if (!currentScreenshot) {
+            currentScreenshot = screenshot;
+          }
         }
       }
 
