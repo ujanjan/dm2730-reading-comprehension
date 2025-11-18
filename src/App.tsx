@@ -185,12 +185,12 @@ export default function App() {
               {trackingEnabled ? (
                 <>
                   <MousePointerClick className="h-4 w-4 mr-1" />
-                  Stop Tracking
+                  Stop The Quiz
                 </>
               ) : (
                 <>
                   <MousePointer2 className="h-4 w-4 mr-1" />
-                  Start Cursor Tracking
+                  Start The Quiz
                 </>
               )}
             </Button>
@@ -221,6 +221,7 @@ export default function App() {
               cursorHistory={cursorHistory}
               screenshot={screenshot}
               onCaptureScreenshot={handleCaptureScreenshot}
+              onQuizComplete={() => setTrackingEnabled(false)}
             />
           </div>
           

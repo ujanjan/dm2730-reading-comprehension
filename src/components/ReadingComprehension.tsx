@@ -20,6 +20,7 @@ interface ReadingComprehensionProps {
   cursorHistory?: CursorData[];
   screenshot?: string | null;
   onCaptureScreenshot?: () => Promise<string | null>;
+  onQuizComplete?: () => void;
 }
 
 export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehensionProps>(
@@ -30,6 +31,7 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
     cursorHistory = [],
     screenshot = null,
     onCaptureScreenshot,
+    onQuizComplete,
   }, ref) {
     const [currentQuestionIndex, setCurrentQuestionIndex] =
       useState(0);
@@ -43,6 +45,9 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
     const [correctlyAnsweredQuestions, setCorrectlyAnsweredQuestions] = useState<
       number[]
     >([]);
+    const [quizStartTime, setQuizStartTime] = useState<Date | null>(null);
+    const [quizEndTime, setQuizEndTime] = useState<Date | null>(null);
+    const [wrongAttempts, setWrongAttempts] = useState<Record<number, number>>({});
     const passageRef = useRef<HTMLDivElement>(null);
 
     const currentQuestion = questions[currentQuestionIndex];
@@ -53,7 +58,21 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
     const handleSubmit = async () => {
       if (!selectedAnswer || isLoadingFeedback) return;
 
+      // Track quiz start time on first submission
+      if (quizStartTime === null) {
+        setQuizStartTime(new Date());
+      }
+
       const isCorrect = selectedAnswer === currentQuestion?.correctAnswer.toString();
+      
+      // Track wrong attempts (only if question hasn't been correctly answered yet)
+      if (!isCorrect && currentQuestion && !correctlyAnsweredQuestions.includes(currentQuestion.id)) {
+        setWrongAttempts(prev => ({
+          ...prev,
+          [currentQuestion.id]: (prev[currentQuestion.id] || 0) + 1
+        }));
+      }
+      
       setCurrentSubmissionCorrect(isCorrect);
       setShowFeedback(true);
       setIsLoadingFeedback(true);
@@ -102,11 +121,18 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
       // Only update score and mark as answered if correct
       if (isCorrect) {
         if (!correctlyAnsweredQuestions.includes(currentQuestion.id)) {
+          const newCorrectlyAnswered = [...correctlyAnsweredQuestions, currentQuestion.id];
           setScore(score + 1);
-          setCorrectlyAnsweredQuestions([
-            ...correctlyAnsweredQuestions,
-            currentQuestion.id,
-          ]);
+          setCorrectlyAnsweredQuestions(newCorrectlyAnswered);
+          
+          // Stop the timer when all questions are answered
+          if (newCorrectlyAnswered.length === questions.length && quizEndTime === null) {
+            setQuizEndTime(new Date());
+            // Automatically stop the quiz tracking
+            if (onQuizComplete) {
+              onQuizComplete();
+            }
+          }
         }
       }
     };
@@ -324,26 +350,92 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center">
-              <div>
-                <div className="text-4xl mb-3">
-                  {score === questions.length
-                    ? "🎉"
-                    : score >= questions.length / 2
-                      ? "👍"
-                      : "📚"}
+            <div className="flex-1 flex flex-col overflow-y-auto">
+              <div className="w-full max-w-2xl mx-auto px-4 py-6">
+                {/* Header Section */}
+                <div className="text-center mb-6">
+                  <div className="text-5xl mb-4">
+                    {score === questions.length
+                      ? "🎉"
+                      : score >= questions.length / 2
+                        ? "👍"
+                        : "📚"}
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900">Quiz Complete!</h3>
                 </div>
-                <h3 className="mb-2 text-base">Quiz Complete!</h3>
-                <p className="text-gray-600 text-sm">
-                  You scored {score} out of {questions.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {score === questions.length
-                    ? "Perfect score!"
-                    : score >= questions.length / 2
-                      ? "Good job!"
-                      : "Keep practicing!"}
-                </p>
+                
+                {/* Stats Section */}
+                <div className="space-y-4 mb-6">
+                  {/* Quiz Duration */}
+                  {quizStartTime && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Time taken</span>
+                        <span className="text-sm font-semibold text-gray-900">
+                          {(() => {
+                            // Use end time if quiz is complete (timer stopped), otherwise use current time
+                            const endTime = quizEndTime || new Date();
+                            const duration = Math.floor((endTime.getTime() - quizStartTime.getTime()) / 1000);
+                            const minutes = Math.floor(duration / 60);
+                            const seconds = duration % 60;
+                            return minutes > 0 
+                              ? `${minutes} minute${minutes !== 1 ? 's' : ''} ${seconds} second${seconds !== 1 ? 's' : ''}`
+                              : `${seconds} second${seconds !== 1 ? 's' : ''}`;
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Wrong Attempts per Question */}
+                <div className="border-t border-gray-200 pt-6">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-4">Question Results</h4>
+                  <div className="space-y-3">
+                    {questions.map((question) => {
+                      const attempts = wrongAttempts[question.id] || 0;
+                      return (
+                        <div 
+                          key={question.id} 
+                          className={`flex items-start gap-3 p-3 rounded-lg border ${
+                            attempts === 0 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-red-50 border-red-200'
+                          }`}
+                        >
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white flex items-center justify-center font-semibold text-xs ${
+                            attempts === 0 ? 'text-green-700' : 'text-red-700'
+                          }">
+                            {question.id}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-gray-700 mb-3" style={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden'
+                            }}>
+                              {question.question}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {attempts === 0 ? (
+                                <span className="inline-flex items-center gap-2 text-xs font-medium text-green-700">
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  Correct on first try
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-2 text-xs font-medium text-red-700">
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  {attempts} wrong {attempts === 1 ? 'answer' : 'answers'} before correct
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}
