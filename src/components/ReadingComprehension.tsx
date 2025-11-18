@@ -14,18 +14,22 @@ interface Question {
 }
 
 interface ReadingComprehensionProps {
+  title?: string;
   passage: string;
   questions: Question[];
   cursorHistory?: CursorData[];
   screenshot?: string | null;
+  onCaptureScreenshot?: () => Promise<string | null>;
 }
 
 export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehensionProps>(
   function ReadingComprehension({
+    title,
     passage,
     questions,
     cursorHistory = [],
     screenshot = null,
+    onCaptureScreenshot,
   }, ref) {
     const [currentQuestionIndex, setCurrentQuestionIndex] =
       useState(0);
@@ -54,14 +58,26 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
       setShowFeedback(true);
       setIsLoadingFeedback(true);
 
+      // Capture screenshot if available (for personalized feedback)
+      let currentScreenshot = screenshot;
+      if (onCaptureScreenshot && !currentScreenshot) {
+        try {
+          currentScreenshot = await onCaptureScreenshot();
+          console.log('📸 Screenshot captured for personalized feedback:', currentScreenshot ? 'Success' : 'Failed');
+        } catch (error) {
+          console.warn('Failed to capture screenshot for feedback:', error);
+        }
+      }
+
       // Get personalized feedback
       try {
         const selectedAnswerText = currentQuestion.choices[parseInt(selectedAnswer)];
         const correctAnswerText = currentQuestion.choices[currentQuestion.correctAnswer];
         
         const result = await getPersonalizedQuestionFeedback(
+          title || '',
           passage,
-          screenshot,
+          currentScreenshot,
           cursorHistory,
           currentQuestion.question,
           selectedAnswerText,
@@ -127,16 +143,26 @@ export const ReadingComprehension = forwardRef<HTMLDivElement, ReadingComprehens
           <h2 className="mb-3 text-lg">Reading Passage</h2>
           <div
             ref={passageRef}
-            className="prose max-w-none overflow-y-auto flex-1 pr-2 text-base"
+            className="overflow-y-auto flex-1 pr-2"
           >
-            {passage.split("\n\n").map((paragraph, index) => (
-              <p
-                key={index}
-                className="mb-3 text-gray-700 leading-relaxed"
+            {title && (
+              <h3 
+                className="!font-bold !mb-10 !text-gray-900 !leading-tight"
+                style={{ fontSize: '2rem', fontWeight: '700' }}
               >
-                {paragraph}
-              </p>
-            ))}
+                {title}
+              </h3>
+            )}
+            <div className="prose max-w-none text-base">
+              {passage.split("\n\n").map((paragraph, index) => (
+                <p
+                  key={index}
+                  className="mb-3 text-gray-700 leading-relaxed"
+                >
+                  {paragraph}
+                </p>
+              ))}
+            </div>
           </div>
         </Card>
 

@@ -9,9 +9,9 @@ import { Card } from './components/ui/card';
 import { MousePointer2, MousePointerClick } from 'lucide-react';
 import { toCanvas } from 'html-to-image';
 
-const samplePassage = `A Flowery Past
+const sampleTitle = `A Flowery Past`;
 
-The traditional way to study ancient vegetation has been to analyze pollen preserved in peat or lake sediments. However, pollen samples are often dominated by wind-pollinated plants with abundant pollen, which means that insect-pollinated species with low pollen production were frequently underestimated.
+const samplePassage = `The traditional way to study ancient vegetation has been to analyze pollen preserved in peat or lake sediments. However, pollen samples are often dominated by wind-pollinated plants with abundant pollen, which means that insect-pollinated species with low pollen production were frequently underestimated.
 
 In recent years, researchers have begun using ancient DNA rather than pollen to reconstruct past ecosystems. In Arctic permafrost, well-preserved plant remains, fossilized feces, and other materials allow genetic information to be extracted. In a study published in Nature, researchers collected sediment samples from 21 Arctic sites. After dating the samples with the carbon-14 method and analyzing their DNA, they could trace how vegetation in the tundra changed over the past 50,000 years.
 
@@ -187,10 +187,12 @@ export default function App() {
           <div className="flex-1 min-h-0">
             <ReadingComprehension 
               ref={passageRef}
+              title={sampleTitle}
               passage={samplePassage} 
               questions={sampleQuestions}
               cursorHistory={cursorHistory}
               screenshot={screenshot}
+              onCaptureScreenshot={handleCaptureScreenshot}
             />
           </div>
           
@@ -204,6 +206,7 @@ export default function App() {
               onSaveHeatmap={() => heatmapRef.current?.saveImage()}
               onSaveScreenshot={handleCaptureScreenshot}
               heatmapRef={heatmapRef}
+              title={sampleTitle}
               passage={samplePassage}
             />
           </div>

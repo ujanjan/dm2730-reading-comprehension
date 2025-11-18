@@ -112,6 +112,7 @@ interface CursorTrackingDataProps {
   onSaveHeatmap: () => void;
   onSaveScreenshot: () => Promise<string | null>;
   heatmapRef: React.RefObject<CursorHeatmapHandle | null>;
+  title?: string;
   passage: string;
 }
 
@@ -124,6 +125,7 @@ export function CursorTrackingData({
   onSaveHeatmap,
   onSaveScreenshot,
   heatmapRef,
+  title,
   passage
 }: CursorTrackingDataProps) {
   const [showData, setShowData] = useState(false);
@@ -207,6 +209,7 @@ export function CursorTrackingData({
       // Step 3: Analyze with Gemini
       setAnalysisStage('analyzing');
       const result = await analyzeReadingBehavior(
+        title || '',
         passage,
         currentScreenshot,
         cursorHistory
