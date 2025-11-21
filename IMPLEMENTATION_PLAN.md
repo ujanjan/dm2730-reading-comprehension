@@ -5,45 +5,56 @@
 Migrate the reading comprehension app from client-side state to Cloudflare infrastructure (D1 + R2) to support multiple users with persistent sessions.
 
 **Target**: ~50 concurrent users
-**Stack**: Cloudflare Pages + Workers + D1 + R2
+**Stack**: Cloudflare Pages with Functions + D1 + R2
 
 ---
 
 ## Phase 1: Backend Infrastructure Setup
 
-### 1.1 Initialize Cloudflare Workers
+### 1.1 Project Structure with Pages Functions
 
-Create a new Workers project for API endpoints.
+Use Cloudflare Pages Functions (file-based routing) instead of separate Workers. This provides:
+- Single deployment (git push deploys everything)
+- No CORS issues (same origin)
+- Automatic routing based on file structure
 
-```bash
-# In project root
-npx wrangler init api --type=javascript
+**Updated file structure:**
 ```
-
-**File structure:**
-```
-/api
-  /src
-    index.ts              # Main worker entry
-    /routes
-      sessions.ts         # Session CRUD
-      passages.ts         # Passage results
-      admin.ts            # Admin endpoints
-    /services
-      d1.ts               # D1 database operations
-      r2.ts               # R2 storage operations
-    /utils
-      uuid.ts             # UUID generation
-      shuffle.ts          # Array shuffling
-  wrangler.toml           # Cloudflare config
+/read-the-text
+  /src                          # React app (existing)
+  /functions                    # API routes (Pages Functions)
+    /api
+      /sessions
+        index.ts                # POST /api/sessions (create)
+        check.ts                # POST /api/sessions/check
+        [id].ts                 # GET/DELETE /api/sessions/:id
+        [id]
+          complete.ts           # POST /api/sessions/:id/complete
+      /passages
+        [sessionId]
+          [passageIndex].ts     # PUT /api/passages/:sessionId/:passageIndex
+          [passageIndex]
+            attempts.ts         # POST /api/passages/:sessionId/:passageIndex/attempts
+      /admin
+        sessions.ts             # GET /api/admin/sessions
+        sessions
+          [id].ts               # GET/DELETE /api/admin/sessions/:id
+    _middleware.ts              # Shared middleware (optional)
+  /migrations                   # D1 migrations
+    0001_initial.sql
+  wrangler.toml                 # Cloudflare config (in project root)
+  package.json
 ```
 
 ### 1.2 Configure wrangler.toml
 
+**File: `/wrangler.toml`** (in project root)
+
 ```toml
-name = "read-the-text-api"
-main = "src/index.ts"
+name = "read-the-text"
 compatibility_date = "2024-01-01"
+
+# Pages will auto-detect this is a Pages project
 
 [[d1_databases]]
 binding = "DB"
@@ -59,6 +70,7 @@ bucket_name = "read-the-text-storage"
 
 ```bash
 npx wrangler d1 create read-the-text-db
+# Copy the database_id to wrangler.toml
 ```
 
 ### 1.4 Create R2 Bucket
@@ -67,13 +79,20 @@ npx wrangler d1 create read-the-text-db
 npx wrangler r2 bucket create read-the-text-storage
 ```
 
+### 1.5 Install Dependencies
+
+```bash
+npm install uuid
+npm install -D @cloudflare/workers-types
+```
+
 ---
 
 ## Phase 2: Database Schema
 
 ### 2.1 Create Migration File
 
-**File: `/api/migrations/0001_initial.sql`**
+**File: `/migrations/0001_initial.sql`**
 
 ```sql
 -- Sessions table
@@ -136,83 +155,92 @@ npx wrangler d1 migrations apply read-the-text-db
 
 ---
 
-## Phase 3: API Endpoints
+## Phase 3: API Endpoints (Pages Functions)
 
-### 3.1 Main Worker Entry
+Pages Functions use file-based routing. Each file exports HTTP method handlers.
 
-**File: `/api/src/index.ts`**
+### 3.1 Type Definitions for Functions
+
+**File: `/functions/types.ts`**
 
 ```typescript
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { sessions } from './routes/sessions';
-import { passages } from './routes/passages';
-import { admin } from './routes/admin';
-
-type Bindings = {
+export interface Env {
   DB: D1Database;
   STORAGE: R2Bucket;
-};
+}
 
-const app = new Hono<{ Bindings: Bindings }>();
+// Helper functions
+export function shuffleArray(array: number[]): number[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
-// CORS for frontend
-app.use('/*', cors({
-  origin: ['http://localhost:5173', 'https://your-domain.pages.dev'],
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
-}));
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
-// Routes
-app.route('/api/sessions', sessions);
-app.route('/api/passages', passages);
-app.route('/api/admin', admin);
-
-// Health check
-app.get('/api/health', (c) => c.json({ status: 'ok' }));
-
-export default app;
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 ```
 
-### 3.2 Sessions Routes
+### 3.2 Sessions - Check Nickname
 
-**File: `/api/src/routes/sessions.ts`**
+**File: `/functions/api/sessions/check.ts`**
 
 ```typescript
-import { Hono } from 'hono';
-import { v4 as uuidv4 } from 'uuid';
+import type { Env } from '../../types';
 
-const sessions = new Hono();
-
-// Check if nickname exists
-sessions.post('/check', async (c) => {
-  const { nickname } = await c.req.json();
-  const db = c.env.DB;
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const { nickname } = await context.request.json();
+  const db = context.env.DB;
 
   const session = await db.prepare(
     'SELECT id, status, current_passage_index, passage_order FROM sessions WHERE nickname = ? ORDER BY created_at DESC LIMIT 1'
   ).bind(nickname).first();
 
   if (!session) {
-    return c.json({ exists: false });
+    return Response.json({ exists: false });
   }
 
-  return c.json({
+  return Response.json({
     exists: true,
     sessionId: session.id,
     status: session.status,
     currentPassageIndex: session.current_passage_index,
     passageOrder: JSON.parse(session.passage_order as string)
   });
-});
+};
+```
 
-// Create new session
-sessions.post('/', async (c) => {
-  const { nickname } = await c.req.json();
-  const db = c.env.DB;
+### 3.3 Sessions - Create
+
+**File: `/functions/api/sessions/index.ts`**
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+import type { Env } from '../../types';
+import { shuffleArray } from '../../types';
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const { nickname } = await context.request.json();
+  const db = context.env.DB;
 
   const sessionId = uuidv4();
-
-  // Generate shuffled passage order (0-9)
   const passageOrder = shuffleArray([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
   await db.prepare(`
@@ -220,39 +248,45 @@ sessions.post('/', async (c) => {
     VALUES (?, ?, ?, 10)
   `).bind(sessionId, nickname, JSON.stringify(passageOrder)).run();
 
-  return c.json({
+  return Response.json({
     sessionId,
     passageOrder,
     resultUrl: `/results/${sessionId}`
   });
-});
+};
+```
 
-// Get session data (for resume or results)
-sessions.get('/:id', async (c) => {
-  const sessionId = c.req.param('id');
-  const db = c.env.DB;
-  const storage = c.env.STORAGE;
+### 3.4 Sessions - Get/Delete by ID
 
-  // Get session
+**File: `/functions/api/sessions/[id].ts`**
+
+```typescript
+import type { Env } from '../../types';
+import { arrayBufferToBase64 } from '../../types';
+
+// GET session data (for resume or results)
+export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.id as string;
+  const db = context.env.DB;
+  const storage = context.env.STORAGE;
+
   const session = await db.prepare(
     'SELECT * FROM sessions WHERE id = ?'
   ).bind(sessionId).first();
 
   if (!session) {
-    return c.json({ error: 'Session not found' }, 404);
+    return Response.json({ error: 'Session not found' }, { status: 404 });
   }
 
-  // Get passage results
   const passageResults = await db.prepare(
     'SELECT * FROM passage_results WHERE session_id = ? ORDER BY passage_index'
   ).bind(sessionId).all();
 
-  // Get all attempts
   const attempts = await db.prepare(
     'SELECT * FROM passage_attempts WHERE session_id = ? ORDER BY passage_index, attempt_number'
   ).bind(sessionId).all();
 
-  // Get screenshots from R2 (as presigned URLs or base64)
+  // Get screenshots from R2
   const resultsWithScreenshots = await Promise.all(
     passageResults.results.map(async (result: any) => {
       let screenshot = null;
@@ -267,7 +301,7 @@ sessions.get('/:id', async (c) => {
     })
   );
 
-  return c.json({
+  return Response.json({
     session: {
       ...session,
       passageOrder: JSON.parse(session.passage_order as string)
@@ -275,32 +309,15 @@ sessions.get('/:id', async (c) => {
     passageResults: resultsWithScreenshots,
     attempts: attempts.results
   });
-});
+};
 
-// Mark session complete
-sessions.post('/:id/complete', async (c) => {
-  const sessionId = c.req.param('id');
-  const { totalTimeMs } = await c.req.json();
-  const db = c.env.DB;
+// DELETE session
+export const onRequestDelete: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.id as string;
+  const db = context.env.DB;
+  const storage = context.env.STORAGE;
 
-  await db.prepare(`
-    UPDATE sessions
-    SET status = 'completed',
-        completed_at = datetime('now'),
-        total_time_ms = ?
-    WHERE id = ?
-  `).bind(totalTimeMs, sessionId).run();
-
-  return c.json({ success: true });
-});
-
-// Delete session and start fresh (same nickname)
-sessions.delete('/:id', async (c) => {
-  const sessionId = c.req.param('id');
-  const db = c.env.DB;
-  const storage = c.env.STORAGE;
-
-  // Get all R2 keys for this session
+  // Get all R2 keys
   const results = await db.prepare(
     'SELECT screenshot_r2_key, cursor_history_r2_key FROM passage_results WHERE session_id = ?'
   ).bind(sessionId).all();
@@ -315,56 +332,57 @@ sessions.delete('/:id', async (c) => {
     }
   }
 
-  // Delete from D1 (cascade will handle passage_results and attempts)
+  // Delete from D1
   await db.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
 
-  return c.json({ success: true });
-});
-
-// Helper functions
-function shuffleArray(array: number[]): number[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-export { sessions };
+  return Response.json({ success: true });
+};
 ```
 
-### 3.3 Passages Routes
+### 3.5 Sessions - Complete
 
-**File: `/api/src/routes/passages.ts`**
+**File: `/functions/api/sessions/[id]/complete.ts`**
 
 ```typescript
-import { Hono } from 'hono';
+import type { Env } from '../../../types';
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.id as string;
+  const { totalTimeMs } = await context.request.json();
+  const db = context.env.DB;
+
+  await db.prepare(`
+    UPDATE sessions
+    SET status = 'completed',
+        completed_at = datetime('now'),
+        total_time_ms = ?
+    WHERE id = ?
+  `).bind(totalTimeMs, sessionId).run();
+
+  return Response.json({ success: true });
+};
+```
+
+### 3.6 Passages - Save Result
+
+**File: `/functions/api/passages/[sessionId]/[passageIndex].ts`**
+
+```typescript
 import { v4 as uuidv4 } from 'uuid';
+import type { Env } from '../../../types';
+import { base64ToArrayBuffer } from '../../../types';
 
-const passages = new Hono();
+export const onRequestPut: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.sessionId as string;
+  const passageIndex = parseInt(context.params.passageIndex as string);
+  const db = context.env.DB;
+  const storage = context.env.STORAGE;
 
-// Save passage completion
-passages.put('/:sessionId/:passageIndex', async (c) => {
-  const sessionId = c.req.param('sessionId');
-  const passageIndex = parseInt(c.req.param('passageIndex'));
-  const db = c.env.DB;
-  const storage = c.env.STORAGE;
-
-  const body = await c.req.json();
+  const body = await context.request.json();
   const {
     passageId,
-    screenshot,        // base64 string
-    cursorHistory,     // array of {x, y, timestamp}
+    screenshot,
+    cursorHistory,
     wrongAttempts,
     timeSpentMs,
     selectedAnswer
@@ -414,16 +432,24 @@ passages.put('/:sessionId/:passageIndex', async (c) => {
     UPDATE sessions SET current_passage_index = ? WHERE id = ?
   `).bind(passageIndex + 1, sessionId).run();
 
-  return c.json({ success: true });
-});
+  return Response.json({ success: true });
+};
+```
 
-// Record an attempt (called after each Gemini response)
-passages.post('/:sessionId/:passageIndex/attempts', async (c) => {
-  const sessionId = c.req.param('sessionId');
-  const passageIndex = parseInt(c.req.param('passageIndex'));
-  const db = c.env.DB;
+### 3.7 Passages - Record Attempt
 
-  const { selectedAnswer, isCorrect, geminiResponse } = await c.req.json();
+**File: `/functions/api/passages/[sessionId]/[passageIndex]/attempts.ts`**
+
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+import type { Env } from '../../../../types';
+
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.sessionId as string;
+  const passageIndex = parseInt(context.params.passageIndex as string);
+  const db = context.env.DB;
+
+  const { selectedAnswer, isCorrect, geminiResponse } = await context.request.json();
 
   // Get current attempt number
   const countResult = await db.prepare(`
@@ -443,35 +469,21 @@ passages.post('/:sessionId/:passageIndex/attempts', async (c) => {
     selectedAnswer, isCorrect ? 1 : 0, geminiResponse
   ).run();
 
-  return c.json({ success: true, attemptNumber });
-});
-
-// Helper
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-export { passages };
+  return Response.json({ success: true, attemptNumber });
+};
 ```
 
-### 3.4 Admin Routes
+### 3.8 Admin - List Sessions
 
-**File: `/api/src/routes/admin.ts`**
+**File: `/functions/api/admin/sessions.ts`**
 
 ```typescript
-import { Hono } from 'hono';
+import type { Env } from '../../types';
 
-const admin = new Hono();
-
-// List all sessions
-admin.get('/sessions', async (c) => {
-  const db = c.env.DB;
-  const status = c.req.query('status'); // 'completed' | 'in_progress' | undefined
+export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const db = context.env.DB;
+  const url = new URL(context.request.url);
+  const status = url.searchParams.get('status');
 
   let query = `
     SELECT
@@ -489,35 +501,40 @@ admin.get('/sessions', async (c) => {
 
   const sessions = await db.prepare(query).all();
 
-  return c.json({ sessions: sessions.results });
-});
+  return Response.json({ sessions: sessions.results });
+};
+```
 
-// Get single session details (same as sessions/:id but for admin context)
-admin.get('/sessions/:id', async (c) => {
-  const sessionId = c.req.param('id');
-  const db = c.env.DB;
-  const storage = c.env.STORAGE;
+### 3.9 Admin - Get/Delete Session
 
-  // Get session
+**File: `/functions/api/admin/sessions/[id].ts`**
+
+```typescript
+import type { Env } from '../../../types';
+import { arrayBufferToBase64 } from '../../../types';
+
+// GET session details
+export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.id as string;
+  const db = context.env.DB;
+  const storage = context.env.STORAGE;
+
   const session = await db.prepare(
     'SELECT * FROM sessions WHERE id = ?'
   ).bind(sessionId).first();
 
   if (!session) {
-    return c.json({ error: 'Session not found' }, 404);
+    return Response.json({ error: 'Session not found' }, { status: 404 });
   }
 
-  // Get passage results
   const passageResults = await db.prepare(
     'SELECT * FROM passage_results WHERE session_id = ? ORDER BY passage_index'
   ).bind(sessionId).all();
 
-  // Get all attempts
   const attempts = await db.prepare(
     'SELECT * FROM passage_attempts WHERE session_id = ? ORDER BY passage_index, attempt_number'
   ).bind(sessionId).all();
 
-  // Get screenshots
   const resultsWithScreenshots = await Promise.all(
     passageResults.results.map(async (result: any) => {
       let screenshot = null;
@@ -532,7 +549,7 @@ admin.get('/sessions/:id', async (c) => {
     })
   );
 
-  return c.json({
+  return Response.json({
     session: {
       ...session,
       passageOrder: JSON.parse(session.passage_order as string)
@@ -540,20 +557,18 @@ admin.get('/sessions/:id', async (c) => {
     passageResults: resultsWithScreenshots,
     attempts: attempts.results
   });
-});
+};
 
-// Delete session
-admin.delete('/sessions/:id', async (c) => {
-  const sessionId = c.req.param('id');
-  const db = c.env.DB;
-  const storage = c.env.STORAGE;
+// DELETE session
+export const onRequestDelete: PagesFunction<Env> = async (context) => {
+  const sessionId = context.params.id as string;
+  const db = context.env.DB;
+  const storage = context.env.STORAGE;
 
-  // Get all R2 keys
   const results = await db.prepare(
     'SELECT screenshot_r2_key, cursor_history_r2_key FROM passage_results WHERE session_id = ?'
   ).bind(sessionId).all();
 
-  // Delete from R2
   for (const result of results.results as any[]) {
     if (result.screenshot_r2_key) {
       await storage.delete(result.screenshot_r2_key);
@@ -563,22 +578,10 @@ admin.delete('/sessions/:id', async (c) => {
     }
   }
 
-  // Delete from D1
   await db.prepare('DELETE FROM sessions WHERE id = ?').bind(sessionId).run();
 
-  return c.json({ success: true });
-});
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-export { admin };
+  return Response.json({ success: true });
+};
 ```
 
 ---
@@ -1274,33 +1277,62 @@ const isReadOnly = passageData[currentPassageIndex]?.isComplete;
 
 ## Phase 5: Deployment
 
-### 5.1 Deploy Workers API
+With Pages Functions, deployment is unified and simple.
+
+### 5.1 Local Development
 
 ```bash
-cd api
-npx wrangler deploy
+# Run with D1 and R2 bindings locally
+npx wrangler pages dev --d1=DB --r2=STORAGE -- npm run dev
 ```
 
-### 5.2 Update Frontend Environment
+### 5.2 Apply Database Migrations
 
-**File: `.env.production`**
+```bash
+# Apply to local D1
+npx wrangler d1 migrations apply read-the-text-db --local
+
+# Apply to production D1
+npx wrangler d1 migrations apply read-the-text-db --remote
 ```
-VITE_API_URL=https://read-the-text-api.<your-subdomain>.workers.dev/api
-```
 
-### 5.3 Deploy to Cloudflare Pages
+### 5.3 Deploy to Production
 
+**Option A: Git-based deployment (recommended)**
+1. Connect your repo to Cloudflare Pages in the dashboard
+2. Set build command: `npm run build`
+3. Set output directory: `dist`
+4. Add D1 and R2 bindings in Pages settings
+5. Every `git push` auto-deploys
+
+**Option B: Manual deployment**
 ```bash
 npm run build
-npx wrangler pages deploy dist
+npx wrangler pages deploy dist --project-name=read-the-text
 ```
 
-### 5.4 Configure Pages to use Workers
+### 5.4 Configure Bindings in Dashboard
 
-In Cloudflare Dashboard:
-1. Go to Pages project settings
-2. Add environment variable: `VITE_API_URL`
-3. Configure Functions (if using Pages Functions instead of separate Workers)
+In Cloudflare Dashboard → Pages → Your Project → Settings → Functions:
+
+1. **D1 Database binding**
+   - Variable name: `DB`
+   - Database: `read-the-text-db`
+
+2. **R2 Bucket binding**
+   - Variable name: `STORAGE`
+   - Bucket: `read-the-text-storage`
+
+### 5.5 Frontend API Configuration
+
+Since frontend and API are on same origin, use relative paths:
+
+**File: `/src/services/apiService.ts`**
+```typescript
+const API_BASE = '/api';  // No need for full URL!
+```
+
+No CORS configuration needed!
 
 ---
 
@@ -1380,9 +1412,10 @@ In Cloudflare Dashboard:
 2. **Loading States**: Show loading indicators during API calls
 3. **Optimistic Updates**: Update UI immediately, then sync with cloud
 4. **Styling**: The CSS for new components needs to be created (use existing app styles as reference)
-5. **Dependencies**: Install `hono`, `uuid`, and `react-router-dom`
-6. **CORS**: Ensure Workers CORS config matches your Pages domain
-7. **Environment Variables**: Use `wrangler secret` for sensitive values
+5. **Dependencies**: Install `uuid`, `react-router-dom`, and `@cloudflare/workers-types`
+6. **No CORS needed**: Frontend and API on same origin (Pages Functions)
+7. **Environment Variables**: Use `wrangler secret` for sensitive values (e.g., Gemini API key)
+8. **TypeScript**: Add `/// <reference types="@cloudflare/workers-types" />` to functions files
 
 ---
 
