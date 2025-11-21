@@ -1,10 +1,7 @@
 # Cloudflare Pages configuration
 name = "read-the-text"
 compatibility_date = "2025-11-18"
-
-# Static assets directory
-[assets]
-directory = "./dist"
+pages_build_output_dir = "./dist"
 
 # D1 Database binding
 [[d1_databases]]
@@ -16,6 +13,3 @@ database_id = "d2787818-d467-449c-bce7-a5473e703841"
 [[r2_buckets]]
 bucket_name = "read-the-text-storage"
 binding = "read_the_text_storage"
-
-[env.production]
-# Production environment settings
