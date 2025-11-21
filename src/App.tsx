@@ -241,7 +241,7 @@ export default function App() {
   };
 
   // Handle passage completion (correct answer)
-  const handlePassageComplete = async (wrongAttempts: number) => {
+  const handlePassageComplete = async (wrongAttempts: number, selectedAnswer: string) => {
     // Capture screenshot with heatmap before marking complete
     const screenshot = await handleCaptureScreenshot();
 
@@ -275,7 +275,7 @@ export default function App() {
           cursorHistory: updatedData.cursorHistory,
           wrongAttempts,
           timeSpentMs: finalTimeSpent,
-          selectedAnswer: '' // Will be set by ReadingComprehension
+          selectedAnswer
         });
       } catch (err) {
         console.error('Failed to save passage result:', err);
@@ -673,6 +673,8 @@ export default function App() {
               onCaptureScreenshot={handleCaptureScreenshot}
               onPassageComplete={handlePassageComplete}
               trackingEnabled={trackingEnabled}
+              sessionId={sessionId}
+              currentPassageIndex={currentPassageIndex}
             />
           </div>
           
