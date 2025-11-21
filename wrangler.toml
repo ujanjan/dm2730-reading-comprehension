@@ -2,6 +2,10 @@
 name = "read-the-text"
 compatibility_date = "2025-11-18"
 
+# Static assets directory
+[assets]
+directory = "./dist"
+
 # D1 Database binding
 [[d1_databases]]
 binding = "read_the_text_db"
