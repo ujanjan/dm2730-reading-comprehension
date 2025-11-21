@@ -107,8 +107,6 @@ interface CursorTrackingDataProps {
   cursorHistory: CursorData[];
   onClear: () => void;
   screenshot: string | null;
-  showHeatmap: boolean;
-  onToggleHeatmap: () => void;
   onSaveHeatmap: () => void;
   onSaveScreenshot: () => Promise<string | null>;
   heatmapRef: React.RefObject<CursorHeatmapHandle | null>;
@@ -122,8 +120,6 @@ export function CursorTrackingData({
   cursorHistory,
   onClear,
   screenshot,
-  showHeatmap,
-  onToggleHeatmap,
   onSaveHeatmap,
   onSaveScreenshot,
   heatmapRef,
@@ -198,7 +194,7 @@ export function CursorTrackingData({
       let currentScreenshot = screenshot;
 
       // Step 1: Capture screenshot if not available
-      if (!currentScreenshot && showHeatmap) {
+      if (!currentScreenshot) {
         setAnalysisStage('capturing-screenshot');
         currentScreenshot = await onSaveScreenshot();
         // Small delay to show the stage
@@ -244,26 +240,16 @@ export function CursorTrackingData({
         <h3 className="text-sm font-semibold mb-2 text-gray-700">Visualization</h3>
         <div className="flex flex-col gap-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={onToggleHeatmap}
-            className="text-xs w-full justify-start"
-            disabled={cursorHistory.length === 0}
-          >
-            <Flame className="h-4 w-4 mr-2" />
-            {showHeatmap ? 'Disable' : 'Enable'} Heatmap
-          </Button>
-          <Button
             variant={debugMode ? "default" : "outline"}
             size="sm"
             onClick={onToggleDebugMode}
             className="text-xs w-full justify-start"
-            disabled={cursorHistory.length === 0 || !showHeatmap}
+            disabled={cursorHistory.length === 0}
           >
             <Bug className="h-4 w-4 mr-2" />
             Debug Mode {debugMode ? 'ON' : 'OFF'}
           </Button>
-          {!debugMode && showHeatmap && (
+          {!debugMode && (
             <p className="text-xs text-gray-500 italic">
               Heatmap is hidden from view but included in screenshots
             </p>
@@ -350,7 +336,7 @@ export function CursorTrackingData({
             size="sm"
             onClick={onSaveHeatmap}
             className="text-xs w-full justify-start"
-            disabled={cursorHistory.length === 0 || !showHeatmap}
+            disabled={cursorHistory.length === 0}
           >
             <Flame className="h-4 w-4 mr-2" />
             Save Heatmap Image
@@ -362,7 +348,7 @@ export function CursorTrackingData({
               await onSaveScreenshot();
             }}
             className="text-xs w-full justify-start"
-            disabled={cursorHistory.length === 0 || !showHeatmap}
+            disabled={cursorHistory.length === 0}
           >
             <Camera className="h-4 w-4 mr-2" />
             Save Passage with Heatmap

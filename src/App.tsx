@@ -24,7 +24,6 @@ export default function App() {
   const [currentPassageIndex, setCurrentPassageIndex] = useState(0);
   const currentPassage = passages[currentPassageIndex];
   const [trackingEnabled, setTrackingEnabled] = useState(false);
-  const [showHeatmap, setShowHeatmap] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [debugMode, setDebugMode] = useState(false); // Debug mode to show heatmap to user
@@ -190,8 +189,8 @@ export default function App() {
         pixelRatio: pixelRatio,
       });
 
-      // If heatmap is visible, composite it onto the screenshot
-      if (showHeatmap && heatmapRef.current) {
+      // Composite heatmap onto the screenshot (heatmap is always enabled when tracking)
+      if (heatmapRef.current) {
         const heatmapCanvas = heatmapRef.current.getCanvas();
         if (heatmapCanvas) {
           const ctx = canvas.getContext('2d');
@@ -418,8 +417,6 @@ export default function App() {
                 cursorHistory={currentData.cursorHistory}
                 onClear={clearCursorHistory}
                 screenshot={currentData.screenshot}
-                showHeatmap={showHeatmap}
-                onToggleHeatmap={() => setShowHeatmap(!showHeatmap)}
                 onSaveHeatmap={() => heatmapRef.current?.saveImage()}
                 onSaveScreenshot={handleCaptureScreenshot}
                 heatmapRef={heatmapRef}
@@ -438,7 +435,7 @@ export default function App() {
         enabled={trackingEnabled}
       />
 
-      {trackingEnabled && showHeatmap && (
+      {trackingEnabled && (
         <CursorHeatmap
           ref={heatmapRef}
           cursorHistory={currentData.cursorHistory}
