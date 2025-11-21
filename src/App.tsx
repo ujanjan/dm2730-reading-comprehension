@@ -20,6 +20,8 @@ interface PassageData {
   isComplete: boolean;
   wrongAttempts: number;
   timeSpent: number; // Total time spent in milliseconds
+  selectedAnswer?: string;
+  feedbackText?: string;
 }
 
 export default function App() {
@@ -132,12 +134,20 @@ export default function App() {
       // Restore passage data from cloud
       const restoredData: Record<number, PassageData> = {};
       resumeData.passageResults.forEach((result) => {
+        // Find the last attempt for this passage to get feedback
+        const passageAttempts = resumeData.attempts
+          .filter(a => a.passage_index === result.passage_index)
+          .sort((a, b) => b.attempt_number - a.attempt_number);
+        const lastAttempt = passageAttempts[0];
+
         restoredData[result.passage_index] = {
           cursorHistory: [],
           screenshot: result.screenshot || null,
           isComplete: result.is_complete === 1,
           wrongAttempts: result.wrong_attempts,
-          timeSpent: result.time_spent_ms
+          timeSpent: result.time_spent_ms,
+          selectedAnswer: result.final_selected_answer,
+          feedbackText: lastAttempt?.gemini_response || ''
         };
       });
       setPassageData(restoredData);
@@ -618,6 +628,34 @@ export default function App() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
+
+            {/* Passage completion indicators */}
+            <div className="flex items-center gap-1 px-2">
+              {passages.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (trackingEnabled && idx !== currentPassageIndex) {
+                      accumulateTimeForCurrentPassage();
+                      setCurrentPassageIndex(idx);
+                      passageStartTimeRef.current = Date.now();
+                    }
+                  }}
+                  disabled={!trackingEnabled}
+                  className={`w-2.5 h-2.5 rounded-full transition-all ${
+                    idx === currentPassageIndex
+                      ? 'ring-2 ring-blue-400 ring-offset-1'
+                      : ''
+                  } ${
+                    passageData[idx]?.isComplete
+                      ? 'bg-green-500'
+                      : 'bg-gray-300'
+                  } ${trackingEnabled ? 'cursor-pointer hover:scale-125' : 'cursor-default'}`}
+                  title={`Passage ${idx + 1}${passageData[idx]?.isComplete ? ' (completed)' : ''}`}
+                />
+              ))}
+            </div>
+
             <Button
               variant="outline"
               size="sm"
@@ -682,6 +720,9 @@ export default function App() {
               trackingEnabled={trackingEnabled}
               sessionId={sessionId}
               currentPassageIndex={currentPassageIndex}
+              initialIsComplete={currentData.isComplete}
+              initialSelectedAnswer={currentData.selectedAnswer}
+              initialFeedback={currentData.feedbackText}
             />
           </div>
           

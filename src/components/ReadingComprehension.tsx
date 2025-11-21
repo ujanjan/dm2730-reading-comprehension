@@ -1,4 +1,4 @@
-import { useState, useRef, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -25,6 +25,9 @@ interface ReadingComprehensionProps {
   trackingEnabled?: boolean;
   sessionId?: string | null;
   currentPassageIndex?: number;
+  initialIsComplete?: boolean;
+  initialSelectedAnswer?: string;
+  initialFeedback?: string;
 }
 
 export interface ReadingComprehensionHandle {
@@ -45,15 +48,29 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
     trackingEnabled = false,
     sessionId = null,
     currentPassageIndex = 0,
+    initialIsComplete = false,
+    initialSelectedAnswer = "",
+    initialFeedback = "",
   }, ref) {
-    const [selectedAnswer, setSelectedAnswer] = useState<string>("");
-    const [showFeedback, setShowFeedback] = useState(false);
-    const [feedbackText, setFeedbackText] = useState<string>("");
+    const [selectedAnswer, setSelectedAnswer] = useState<string>(initialSelectedAnswer);
+    const [showFeedback, setShowFeedback] = useState(initialIsComplete);
+    const [feedbackText, setFeedbackText] = useState<string>(initialFeedback);
     const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
-    const [currentSubmissionCorrect, setCurrentSubmissionCorrect] = useState<boolean>(false);
+    const [currentSubmissionCorrect, setCurrentSubmissionCorrect] = useState<boolean>(initialIsComplete);
     const [wrongAttempts, setWrongAttempts] = useState(0);
-    const [isComplete, setIsComplete] = useState(false);
+    const [isComplete, setIsComplete] = useState(initialIsComplete);
     const passageRef = useRef<HTMLDivElement>(null);
+
+    // Reset state when props change (navigating between passages)
+    useEffect(() => {
+      setSelectedAnswer(initialSelectedAnswer);
+      setShowFeedback(initialIsComplete);
+      setFeedbackText(initialFeedback);
+      setCurrentSubmissionCorrect(initialIsComplete);
+      setIsComplete(initialIsComplete);
+      setWrongAttempts(0);
+      setIsLoadingFeedback(false);
+    }, [currentPassageIndex, initialIsComplete, initialSelectedAnswer, initialFeedback]);
 
     // Only use first question
     const currentQuestion = questions[0];
