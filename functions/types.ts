@@ -1,8 +1,8 @@
 /// <reference types="@cloudflare/workers-types" />
 
 export interface Env {
-  DB: D1Database;
-  STORAGE: R2Bucket;
+  read_the_text_db: D1Database;
+  read_the_text_storage: R2Bucket;
 }
 
 // Helper functions
