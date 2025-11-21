@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { Download, Eye, EyeOff, Trash2, MousePointer2, Flame, Camera, Sparkles, Loader2 } from 'lucide-react';
+import { Download, Eye, EyeOff, Trash2, MousePointer2, Flame, Camera, Sparkles, Loader2, Bug } from 'lucide-react';
 import { CursorData } from './CursorTracker';
 import { CursorHeatmapHandle } from './CursorHeatmap';
 import { analyzeReadingBehavior } from '../services/geminiService';
@@ -114,11 +114,13 @@ interface CursorTrackingDataProps {
   heatmapRef: React.RefObject<CursorHeatmapHandle | null>;
   title?: string;
   passage: string;
+  debugMode: boolean;
+  onToggleDebugMode: () => void;
 }
 
-export function CursorTrackingData({ 
-  cursorHistory, 
-  onClear, 
+export function CursorTrackingData({
+  cursorHistory,
+  onClear,
   screenshot,
   showHeatmap,
   onToggleHeatmap,
@@ -126,7 +128,9 @@ export function CursorTrackingData({
   onSaveScreenshot,
   heatmapRef,
   title,
-  passage
+  passage,
+  debugMode,
+  onToggleDebugMode
 }: CursorTrackingDataProps) {
   const [showData, setShowData] = useState(false);
   const [showScreenshotDialog, setShowScreenshotDialog] = useState(false);
@@ -238,16 +242,33 @@ export function CursorTrackingData({
       {/* Visualization Controls */}
       <div className="mb-3 pb-3 border-b border-gray-200 flex-shrink-0">
         <h3 className="text-sm font-semibold mb-2 text-gray-700">Visualization</h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onToggleHeatmap}
-          className="text-xs w-full justify-start"
-          disabled={cursorHistory.length === 0}
-        >
-          <Flame className="h-4 w-4 mr-2" />
-          {showHeatmap ? 'Hide' : 'Show'} Heatmap
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onToggleHeatmap}
+            className="text-xs w-full justify-start"
+            disabled={cursorHistory.length === 0}
+          >
+            <Flame className="h-4 w-4 mr-2" />
+            {showHeatmap ? 'Disable' : 'Enable'} Heatmap
+          </Button>
+          <Button
+            variant={debugMode ? "default" : "outline"}
+            size="sm"
+            onClick={onToggleDebugMode}
+            className="text-xs w-full justify-start"
+            disabled={cursorHistory.length === 0 || !showHeatmap}
+          >
+            <Bug className="h-4 w-4 mr-2" />
+            Debug Mode {debugMode ? 'ON' : 'OFF'}
+          </Button>
+          {!debugMode && showHeatmap && (
+            <p className="text-xs text-gray-500 italic">
+              Heatmap is hidden from view but included in screenshots
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Analysis Section */}

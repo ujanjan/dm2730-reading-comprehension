@@ -27,6 +27,7 @@ export default function App() {
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [debugMode, setDebugMode] = useState(false); // Debug mode to show heatmap to user
   //const [showRealtimeIndicator, setShowRealtimeIndicator] = useState(true);
 
   // Per-passage data storage
@@ -424,6 +425,8 @@ export default function App() {
                 heatmapRef={heatmapRef}
                 title={currentPassage.title}
                 passage={currentPassage.text}
+                debugMode={debugMode}
+                onToggleDebugMode={() => setDebugMode(!debugMode)}
               />
             </div>
           )}
@@ -442,6 +445,7 @@ export default function App() {
           opacity={0.6}
           radius={40}
           containerRef={passageRef}
+          visible={debugMode}
         />
       )}
     </div>
