@@ -5,6 +5,7 @@ import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "./ui/label";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { getPersonalizedQuestionFeedback, CursorData } from "../services/geminiService";
+import { apiService } from "../services/apiService";
 
 interface Question {
   id: number;
@@ -20,8 +21,10 @@ interface ReadingComprehensionProps {
   cursorHistory?: CursorData[];
   screenshot?: string | null;
   onCaptureScreenshot?: () => Promise<string | null>;
-  onPassageComplete?: (wrongAttempts: number) => void;
+  onPassageComplete?: (wrongAttempts: number, selectedAnswer: string) => void;
   trackingEnabled?: boolean;
+  sessionId?: string | null;
+  currentPassageIndex?: number;
 }
 
 export interface ReadingComprehensionHandle {
@@ -40,6 +43,8 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
     onCaptureScreenshot,
     onPassageComplete,
     trackingEnabled = false,
+    sessionId = null,
+    currentPassageIndex = 0,
   }, ref) {
     const [selectedAnswer, setSelectedAnswer] = useState<string>("");
     const [showFeedback, setShowFeedback] = useState(false);
@@ -103,6 +108,7 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
       }
 
       // Get personalized feedback
+      let feedback = '';
       try {
         const selectedAnswerText = currentQuestion.choices[parseInt(selectedAnswer)];
         const correctAnswerText = currentQuestion.choices[currentQuestion.correctAnswer];
@@ -118,11 +124,26 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
           isCorrect
         );
 
-        setFeedbackText(result.feedback);
+        feedback = result.feedback;
+        setFeedbackText(feedback);
+
+        // Record attempt in cloud if we have a session
+        if (sessionId) {
+          try {
+            await apiService.recordAttempt(sessionId, currentPassageIndex, {
+              selectedAnswer: selectedAnswerText,
+              isCorrect,
+              geminiResponse: feedback
+            });
+          } catch (err) {
+            console.error('Failed to record attempt:', err);
+          }
+        }
       } catch (error) {
         console.error('Failed to get personalized feedback:', error);
         // Fallback to default messages
-        setFeedbackText(isCorrect ? 'Correct!' : 'Try again! Focus on the passage to find the answer.');
+        feedback = isCorrect ? 'Correct!' : 'Try again! Focus on the passage to find the answer.';
+        setFeedbackText(feedback);
       } finally {
         setIsLoadingFeedback(false);
       }
@@ -131,7 +152,8 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
       if (isCorrect) {
         setIsComplete(true);
         if (onPassageComplete) {
-          onPassageComplete(wrongAttempts);
+          const selectedAnswerText = currentQuestion.choices[parseInt(selectedAnswer)];
+          onPassageComplete(wrongAttempts, selectedAnswerText);
         }
       }
     };
