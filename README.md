@@ -1,35 +1,47 @@
 # Reading Comprehension App
 
-An interactive reading comprehension application with AI-powered feedback and cursor tracking analytics. This app helps students improve their reading comprehension skills by providing personalized feedback based on their reading behavior patterns.
+An interactive reading comprehension quiz application with AI-powered feedback and cursor tracking analytics. This app helps students improve their reading comprehension skills by analyzing their reading behavior patterns and providing personalized, actionable feedback.
 
 The original design is available at [Figma](https://www.figma.com/design/KIRnobZJKIG7X1QQS8LVAV/Reading-Comprehension-App).
 
 ## Features
 
-- **Interactive Reading Comprehension Quiz**: Read passages and answer multiple-choice questions
-- **Cursor Tracking**: Real-time tracking of cursor movements during reading sessions
-- **Visual Heatmap**: Visual representation of reading patterns showing where attention was focused
-- **AI-Powered Feedback**: Personalized feedback using Google's Gemini AI based on:
-  - Reading behavior analysis (cursor tracking data)
-  - Visual attention patterns (heatmap)
-  - Question performance
-- **Screenshot Capture**: Capture reading sessions with integrated heatmap visualization
-- **Analytics Dashboard**: Sidebar panel showing cursor tracking data, heatmap controls, and reading insights
+### Core Functionality
+- **Multi-Passage Quiz**: Complete 10 reading comprehension passages with multiple-choice questions
+- **Real-time Cursor Tracking**: Tracks cursor movements during reading to analyze attention patterns
+- **Heatmap Visualization**: Generates visual heatmaps showing where readers focused their attention (visible in debug mode and screenshots)
+- **AI-Powered Personalized Feedback**: Uses Google's Gemini 2.0 Flash model to provide:
+  - Question-specific feedback based on reading behavior
+  - Actionable tips for improving comprehension
+  - Analysis of which sections were read vs. skipped
+- **Progress Tracking**: Track performance across all passages with statistics on time spent, accuracy, and attempts
+
+### User Experience
+- **Session Management**: Start, stop, and restart quiz sessions with data persistence per passage
+- **Navigation**: Move between passages while preserving individual progress
+- **Analytics Dashboard**: Collapsible sidebar showing cursor data, heatmap controls, and reading insights
+- **Summary Screen**: Comprehensive performance summary with:
+  - Total time spent
+  - Accuracy rate (perfect passages)
+  - Average time per passage
+  - Visual heatmap gallery for all completed passages
+- **Screenshot Capture**: Automatically captures reading sessions with integrated heatmap overlay
 
 ## Tech Stack
 
 - **React 18** with TypeScript
-- **Vite** - Build tool and development server
-- **Tailwind CSS** - Styling
+- **Vite 6** - Build tool and development server
+- **Tailwind CSS** - Styling with modern CSS features
 - **Radix UI** - Accessible component primitives
-- **Google Gemini AI** - AI-powered feedback generation
+- **Google Gemini AI (2.0 Flash)** - AI-powered feedback generation
 - **html-to-image** - Screenshot capture functionality
+- **Lucide React** - Icon library
 
 ## Prerequisites
 
 - Node.js (v18 or higher recommended)
 - npm or yarn
-- Google Gemini API key ([Get one here](https://makersuite.google.com/app/apikey))
+- Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
 
 ## Setup
 
@@ -37,7 +49,7 @@ The original design is available at [Figma](https://www.figma.com/design/KIRnobZ
 
 ```bash
 git clone <repository-url>
-cd dm2730-reading-comprehension
+cd read-the-text
 ```
 
 ### 2. Install dependencies
@@ -54,7 +66,7 @@ Create a `.env` file in the root directory:
 VITE_GEMINI_API_KEY=your_api_key_here
 ```
 
-Get your Gemini API key from: https://makersuite.google.com/app/apikey
+Get your Gemini API key from: https://aistudio.google.com/app/apikey
 
 **Note:** The `.env` file is already in `.gitignore` and will not be committed to the repository.
 
@@ -64,52 +76,154 @@ Get your Gemini API key from: https://makersuite.google.com/app/apikey
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173` (or the port shown in the terminal).
+The app will be available at `http://localhost:3000` (configured in `vite.config.ts`).
 
 ## Usage
 
-1. **Start a Quiz Session**: Click "Start The Quiz" to begin tracking your cursor movements
-2. **Read the Passage**: Read through the provided passage carefully
-3. **Answer Questions**: Select your answers for each multiple-choice question
-4. **View Feedback**: After answering, receive AI-powered personalized feedback based on your reading behavior
-5. **Analyze Your Reading**: 
-   - Toggle the sidebar to view cursor tracking data
-   - View the heatmap overlay showing where you spent the most time reading
-   - Capture screenshots of your reading session with the heatmap
-6. **Review Insights**: Get actionable tips based on your reading patterns
+### Starting a Quiz Session
+
+1. **Start Tracking**: Click "Start The Quiz" to begin cursor tracking
+2. **Read the Passage**: Read through the provided passage carefully while your cursor movements are tracked
+3. **Answer Questions**: Select your answer for the multiple-choice question
+4. **Receive Feedback**: Get AI-powered personalized feedback based on:
+   - Your reading behavior patterns
+   - Which sections you read vs. skipped
+   - Question correctness and your selected answer
+5. **Navigate Passages**: Use the arrow buttons to move between passages
+6. **View Analytics**: Toggle the sidebar to view:
+   - Cursor tracking statistics
+   - Debug heatmap overlay (optional)
+   - Screenshot capture options
+
+### Completing the Quiz
+
+- Each passage must be answered correctly to proceed
+- Wrong attempts are tracked per passage
+- Time spent on each passage is recorded
+- Screenshots with heatmaps are automatically captured upon correct answers
+- After completing all 10 passages, view your comprehensive summary:
+  - Total time spent
+  - Accuracy rate (percentage of first-try correct answers)
+  - Average time per passage
+  - Visual heatmap gallery for all passages
+
+### Understanding the Heatmap
+
+- **Green/Bright areas**: High cursor activity (more time spent)
+- **Dark areas**: Low or no cursor activity (less time spent or skipped)
+- Heatmaps are hidden by default but captured in screenshots
+- Enable "Debug Mode" in the sidebar to see the heatmap overlay in real-time
 
 ## Project Structure
 
 ```
 src/
 ├── components/
-│   ├── ReadingComprehension.tsx    # Main quiz component
-│   ├── CursorTracker.tsx          # Cursor movement tracking
-│   ├── CursorHeatmap.tsx          # Visual heatmap generation
-│   ├── CursorTrackingData.tsx     # Analytics dashboard sidebar
-│   ├── RealtimeCursorIndicator.tsx # Real-time cursor visualization
-│   └── ui/                        # Reusable UI components (Radix UI)
+│   ├── ReadingComprehension.tsx       # Main quiz component with question handling
+│   ├── CursorTracker.tsx              # Real-time cursor movement tracking
+│   ├── CursorHeatmap.tsx              # Canvas-based heatmap visualization
+│   ├── CursorTrackingData.tsx         # Analytics sidebar panel
+│   ├── RealtimeCursorIndicator.tsx    # Live cursor position indicator (optional)
+│   ├── figma/
+│   │   └── ImageWithFallback.tsx      # Image loading with fallback handling
+│   └── ui/                            # Reusable UI components (Radix UI + Tailwind)
+│       ├── button.tsx
+│       ├── card.tsx
+│       ├── alert.tsx
+│       └── ... (40+ UI components)
+├── data/
+│   └── passages.json                  # 10 reading comprehension passages with questions
 ├── services/
-│   └── geminiService.ts           # Gemini AI integration
-├── App.tsx                        # Main application component
-└── main.tsx                       # Application entry point
+│   ├── geminiService.ts               # Gemini AI integration for feedback
+│   └── passageService.ts              # Passage data loading and management
+├── types/
+│   └── passage.ts                     # TypeScript interfaces for passages
+├── styles/
+│   └── globals.css                    # Global styles and Tailwind configuration
+├── App.tsx                            # Main application component with state management
+├── main.tsx                           # Application entry point
+└── index.css                          # Base CSS imports
 ```
 
 ## Key Components
 
-### ReadingComprehension
-The core quiz component that displays passages and questions, handles answer submission, and integrates with the AI feedback system.
+### App.tsx
+The main application component that orchestrates:
+- **Multi-passage state management**: Tracks data for all 10 passages independently
+- **Navigation**: Handles moving between passages
+- **Timer tracking**: Records time spent per passage
+- **Screenshot capture**: Composites heatmap onto passage screenshots
+- **Summary generation**: Calculates statistics and displays results
 
-### CursorTracker
-Tracks cursor movements in real-time, recording position (x, y) and timestamps for analysis.
+### ReadingComprehension.tsx
+Core quiz component featuring:
+- Passage display with scrollable content
+- Multiple-choice question handling
+- Answer validation and wrong attempt tracking
+- Integration with Gemini AI for personalized feedback
+- Forwarded ref to expose passage element for heatmap
 
-### CursorHeatmap
-Generates a visual heatmap overlay showing reading attention patterns based on cursor tracking data.
+### CursorTracker.tsx
+Tracks cursor movements and collects data:
+- Records x, y coordinates and timestamps
+- Throttles data collection for performance
+- Can be enabled/disabled dynamically
+
+### CursorHeatmap.tsx
+Generates visual heatmap overlay:
+- Canvas-based rendering with gradient effects
+- Relative to passage container coordinates
+- Configurable opacity and radius
+- Exportable as image
+- Hidden by default (visible in debug mode and screenshots)
+
+### CursorTrackingData.tsx
+Analytics sidebar displaying:
+- Cursor data statistics (points, duration, coverage)
+- Screenshot preview
+- Heatmap controls (save, capture, debug toggle)
+- Reading behavior insights
 
 ### Gemini Service
-Provides two main functions:
-- `analyzeReadingBehavior()`: Analyzes overall reading patterns and provides actionable tips
-- `getPersonalizedQuestionFeedback()`: Provides question-specific feedback based on reading behavior
+Provides two AI-powered analysis functions:
+
+#### `analyzeReadingBehavior()`
+Analyzes overall reading patterns:
+- Processes cursor tracking data (sampled to 100 points for efficiency)
+- Analyzes heatmap visual patterns
+- Provides 4-6 actionable, concise feedback tips
+- Optimized for token usage with JPEG compression and data sampling
+
+#### `getPersonalizedQuestionFeedback()`
+Provides question-specific feedback:
+- Analyzes which sections were actually read
+- Connects reading behavior to answer correctness
+- For correct answers: Validates they read the relevant sections
+- For incorrect answers: Guides to the correct section without revealing the answer
+- Maximum 2-3 sentences (30-40 words)
+- Emphasizes evidence-based claims
+
+## Optimization Features
+
+The app includes several optimizations for performance and cost efficiency:
+
+### Screenshot Optimization
+- **Pixel Ratio Limiting**: Caps at 1.5x instead of full device pixel ratio (2-3x on retina)
+- **JPEG Compression**: Uses JPEG (quality 0.85) instead of PNG
+- **File Size**: Reduced from ~500KB-2MB (PNG) to ~50-150KB (JPEG) - 10-20x smaller
+- **Heatmap Compositing**: Efficiently overlays heatmap during capture without DOM manipulation
+
+### AI Token Optimization
+- **Data Sampling**: Sends 100 evenly distributed cursor points instead of all points (can be 1000+)
+- **Maintains Quality**: Sampling preserves temporal and spatial distribution
+- **Token Reduction**: 10-20x fewer tokens while maintaining analytical accuracy
+- **Visual Priority**: Heatmap image is the primary analysis source, JSON is supplementary
+
+### Performance Features
+- **Canvas-based Heatmap**: Efficient rendering using HTML5 Canvas API
+- **Throttled Tracking**: Cursor data collection is throttled for optimal performance
+- **Conditional Rendering**: Heatmap only renders when tracking is enabled
+- **Memory Management**: Per-passage data storage prevents memory leaks
 
 ## Building for Production
 
@@ -119,45 +233,66 @@ npm run build
 
 The production build will be created in the `dist/` directory.
 
-## Deployment to Cloudflare Pages
+## Deployment
 
-This project is configured for deployment to Cloudflare Pages. Follow these steps:
+### Prerequisites
+- Cloudflare account ([Sign up for free](https://dash.cloudflare.com/sign-up))
+- Git repository (GitHub, GitLab, or Bitbucket)
+- Gemini API key
 
-### Option 1: Deploy via Cloudflare Dashboard (Recommended)
+### Deploy to Cloudflare Pages
 
-1. **Push your code to GitHub/GitLab/Bitbucket**
+#### Option 1: Automatic Deployment via Git Integration (Recommended)
+
+1. **Push your code to a Git repository**
    ```bash
    git add .
-   git commit -m "Configure for Cloudflare Pages"
+   git commit -m "Ready for deployment"
    git push origin main
    ```
 
-2. **Connect your repository to Cloudflare Pages**
+2. **Connect to Cloudflare Pages**
    - Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
-   - Navigate to **Pages** → **Create a project**
-   - Connect your Git repository
-   - Select the repository and branch (usually `main`)
+   - Navigate to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**
+   - Authorize and select your repository
 
 3. **Configure build settings**
+   - **Project name**: `read-the-text` (or your preferred name)
+   - **Production branch**: `main`
    - **Framework preset**: Vite
    - **Build command**: `npm run build`
    - **Build output directory**: `dist`
-   - **Root directory**: `/` (leave as default)
+   - **Root directory**: `/`
 
 4. **Add environment variables**
-   - Go to **Settings** → **Environment variables**
-   - Add the following variable:
+   - In project settings, go to **Settings** → **Environment variables**
+   - Add variable:
      - **Variable name**: `VITE_GEMINI_API_KEY`
      - **Value**: Your Gemini API key
-   - Make sure to add it to both **Production** and **Preview** environments
+   - Add to both **Production** and **Preview** environments
 
 5. **Deploy**
    - Click **Save and Deploy**
    - Your site will be available at `https://<your-project-name>.pages.dev`
+   - Subsequent pushes to your branch will trigger automatic deployments
 
-### Option 2: Deploy via Wrangler CLI
+#### Option 2: Direct Upload (Faster for one-time deployment)
 
-1. **Install Wrangler CLI** (if not already installed)
+1. **Build the project locally**
+   ```bash
+   npm run build
+   ```
+
+2. **Deploy via Cloudflare Dashboard**
+   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com/)
+   - Navigate to **Workers & Pages** → **Create application** → **Pages** → **Upload assets**
+   - Name your project (e.g., `read-the-text`)
+   - Upload the `dist` folder
+   - Add environment variable `VITE_GEMINI_API_KEY` in project settings
+
+#### Option 3: Wrangler CLI (For developers)
+
+1. **Install Wrangler** (if not already installed)
    ```bash
    npm install -g wrangler
    ```
@@ -167,39 +302,96 @@ This project is configured for deployment to Cloudflare Pages. Follow these step
    wrangler login
    ```
 
-3. **Build the project**
+3. **Build and deploy**
    ```bash
    npm run build
+   wrangler pages deploy dist --project-name=read-the-text
    ```
 
-4. **Deploy to Cloudflare Pages**
-   ```bash
-   wrangler pages deploy dist --project-name=reading-comprehension-app
-   ```
+### Post-Deployment
 
-### Environment Variables
+- **Custom Domain**: Add a custom domain in **Settings** → **Custom domains**
+- **Environment Variables**: Manage in **Settings** → **Environment variables**
+- **Build Settings**: Adjust in **Settings** → **Builds & deployments**
+- **Analytics**: View deployment and visitor analytics in the dashboard
 
-Make sure to set the following environment variable in Cloudflare Pages:
-- `VITE_GEMINI_API_KEY`: Your Google Gemini API key
+### Important Notes
 
-You can set these in the Cloudflare Dashboard under **Pages** → **Your Project** → **Settings** → **Environment variables**.
-
-### Custom Domain
-
-To use a custom domain:
-1. Go to your project in Cloudflare Pages
-2. Navigate to **Custom domains**
-3. Click **Set up a custom domain**
-4. Follow the instructions to configure your domain
+- Environment variables must be prefixed with `VITE_` to be exposed to the client
+- The app is a static site (no server-side rendering)
+- All AI processing happens client-side using the Gemini API
+- Ensure your Gemini API key has appropriate quota limits for production use
 
 ## Development Notes
 
-- The app uses cursor tracking data to analyze reading behavior
-- Heatmaps are generated using canvas-based rendering
-- Screenshots are optimized using JPEG compression for smaller file sizes
-- Cursor data is sampled (100 points max) when sending to Gemini API to optimize token usage
-- The app gracefully handles missing API keys with fallback feedback
+### Data Structure
+- **10 Reading Passages**: Stored in `src/data/passages.json`
+- Each passage includes:
+  - Title and full text
+  - One multiple-choice question with 4 options
+  - Correct answer index
+
+### State Management
+- **Per-passage tracking**: Each passage maintains independent state for:
+  - Cursor history
+  - Screenshot with heatmap
+  - Completion status
+  - Wrong attempts
+  - Time spent
+- **Session persistence**: Data persists when navigating between passages
+- **Timer management**: Automatically tracks time spent per passage
+
+### Heatmap Implementation
+- Hidden by default (visible only in debug mode and screenshots)
+- Canvas-based rendering using radial gradients
+- Coordinates are relative to passage container
+- Automatically composited onto screenshots
+- Configurable opacity (default: 0.6) and radius (default: 40px)
+
+### AI Integration
+- Uses Gemini 2.0 Flash model
+- Handles rate limiting with graceful fallbacks
+- Processes both visual (heatmap) and JSON (cursor coordinates) data
+- Prioritizes heatmap for spatial analysis
+- Enforces concise output (2-3 sentences for feedback, 4-6 tips for analysis)
+
+### Performance Considerations
+- Cursor tracking throttling prevents performance degradation
+- Screenshot generation is optimized with JPEG compression
+- AI requests are optimized with data sampling
+- Canvas rendering is more efficient than DOM-based heatmaps
+
+### Error Handling
+- Graceful degradation when Gemini API key is missing
+- Fallback messages for rate limiting scenarios
+- Console warnings for configuration issues
+- Screenshot capture errors are caught and logged
+
+## Passages Included
+
+The app includes 10 diverse reading comprehension passages:
+
+1. **The Great Lakes** - Ecological challenges and invasive species
+2. **American Folk Music** - Cultural heritage and musical traditions
+3. **New Scotland Yard** - Environmental impact of public buildings
+4. **Animal Life** - Evolution and environmental factors
+5. **Saying it with Flowers** - Archaeological discoveries in Scotland
+6. **Tryggve Lie** - UN leadership and international politics
+7. **Men and Women** - Demographics and social implications
+8. **The Mayas** - Archaeological discoveries and civilization analysis
+9. **Rock Posters** - Visual culture and design movements
+10. **Therapy** - Medical research and treatment approaches
+
+Each passage tests different comprehension skills including:
+- Inference and implication
+- Main idea identification
+- Detail comprehension
+- Author's purpose and tone
+
+## Contributing
+
+This project is part of the DD2730 course at KTH Royal Institute of Technology. For course-related questions or issues, please contact the course instructors.
 
 ## License
 
-This project is part of the DM2730 course at KTH Royal Institute of Technology.
+This project is part of DM2730 (Technology Enhanced Learning)[https://www.kth.se/student/kurser/kurs/DM2730?l=en] at KTH Royal Institute of Technology.

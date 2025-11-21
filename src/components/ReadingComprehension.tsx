@@ -1,10 +1,11 @@
-import { useState, useRef, forwardRef, useImperativeHandle } from "react";
+import { useState, useRef, forwardRef, useImperativeHandle, useEffect } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Label } from "./ui/label";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { getPersonalizedQuestionFeedback, CursorData } from "../services/geminiService";
+import { apiService } from "../services/apiService";
 
 interface Question {
   id: number;
@@ -20,8 +21,13 @@ interface ReadingComprehensionProps {
   cursorHistory?: CursorData[];
   screenshot?: string | null;
   onCaptureScreenshot?: () => Promise<string | null>;
-  onPassageComplete?: (wrongAttempts: number) => void;
+  onPassageComplete?: (wrongAttempts: number, selectedAnswer: string) => void;
   trackingEnabled?: boolean;
+  sessionId?: string | null;
+  currentPassageIndex?: number;
+  initialIsComplete?: boolean;
+  initialSelectedAnswer?: string;
+  initialFeedback?: string;
 }
 
 export interface ReadingComprehensionHandle {
@@ -40,15 +46,31 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
     onCaptureScreenshot,
     onPassageComplete,
     trackingEnabled = false,
+    sessionId = null,
+    currentPassageIndex = 0,
+    initialIsComplete = false,
+    initialSelectedAnswer = "",
+    initialFeedback = "",
   }, ref) {
-    const [selectedAnswer, setSelectedAnswer] = useState<string>("");
-    const [showFeedback, setShowFeedback] = useState(false);
-    const [feedbackText, setFeedbackText] = useState<string>("");
+    const [selectedAnswer, setSelectedAnswer] = useState<string>(initialSelectedAnswer);
+    const [showFeedback, setShowFeedback] = useState(initialIsComplete);
+    const [feedbackText, setFeedbackText] = useState<string>(initialFeedback);
     const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
-    const [currentSubmissionCorrect, setCurrentSubmissionCorrect] = useState<boolean>(false);
+    const [currentSubmissionCorrect, setCurrentSubmissionCorrect] = useState<boolean>(initialIsComplete);
     const [wrongAttempts, setWrongAttempts] = useState(0);
-    const [isComplete, setIsComplete] = useState(false);
+    const [isComplete, setIsComplete] = useState(initialIsComplete);
     const passageRef = useRef<HTMLDivElement>(null);
+
+    // Reset state when props change (navigating between passages)
+    useEffect(() => {
+      setSelectedAnswer(initialSelectedAnswer);
+      setShowFeedback(initialIsComplete);
+      setFeedbackText(initialFeedback);
+      setCurrentSubmissionCorrect(initialIsComplete);
+      setIsComplete(initialIsComplete);
+      setWrongAttempts(0);
+      setIsLoadingFeedback(false);
+    }, [currentPassageIndex, initialIsComplete, initialSelectedAnswer, initialFeedback]);
 
     // Only use first question
     const currentQuestion = questions[0];
@@ -103,6 +125,7 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
       }
 
       // Get personalized feedback
+      let feedback = '';
       try {
         const selectedAnswerText = currentQuestion.choices[parseInt(selectedAnswer)];
         const correctAnswerText = currentQuestion.choices[currentQuestion.correctAnswer];
@@ -118,11 +141,26 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
           isCorrect
         );
 
-        setFeedbackText(result.feedback);
+        feedback = result.feedback;
+        setFeedbackText(feedback);
+
+        // Record attempt in cloud if we have a session
+        if (sessionId) {
+          try {
+            await apiService.recordAttempt(sessionId, currentPassageIndex, {
+              selectedAnswer: selectedAnswerText,
+              isCorrect,
+              geminiResponse: feedback
+            });
+          } catch (err) {
+            console.error('Failed to record attempt:', err);
+          }
+        }
       } catch (error) {
         console.error('Failed to get personalized feedback:', error);
         // Fallback to default messages
-        setFeedbackText(isCorrect ? 'Correct!' : 'Try again! Focus on the passage to find the answer.');
+        feedback = isCorrect ? 'Correct!' : 'Try again! Focus on the passage to find the answer.';
+        setFeedbackText(feedback);
       } finally {
         setIsLoadingFeedback(false);
       }
@@ -131,7 +169,8 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
       if (isCorrect) {
         setIsComplete(true);
         if (onPassageComplete) {
-          onPassageComplete(wrongAttempts);
+          const selectedAnswerText = currentQuestion.choices[parseInt(selectedAnswer)];
+          onPassageComplete(wrongAttempts, selectedAnswerText);
         }
       }
     };

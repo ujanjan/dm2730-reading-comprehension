@@ -55,6 +55,9 @@ coverage/
 # Vite
 .vite/
 
+# Wrangler
+.wrangler/
+
 # TypeScript
 *.tsbuildinfo
 

@@ -1,15 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ReadingComprehension, ReadingComprehensionHandle } from './components/ReadingComprehension';
 import { CursorTracker, CursorData } from './components/CursorTracker';
 import { CursorTrackingData } from './components/CursorTrackingData';
 import { CursorHeatmap, CursorHeatmapHandle } from './components/CursorHeatmap';
-//import { RealtimeCursorIndicator } from './components/RealtimeCursorIndicator';
+import { LandingPage } from './components/LandingPage';
 import { Button } from './components/ui/button';
-import { Card } from './components/ui/card';
 import { MousePointer2, MousePointerClick, PanelRightClose, PanelRightOpen, ChevronLeft, ChevronRight, CheckCircle2, XCircle, Clock, Trophy, Target, Zap } from 'lucide-react';
 import { toCanvas } from 'html-to-image';
 import { getPassages } from './services/passageService';
+import { apiService } from './services/apiService';
 import { Passage } from './types/passage';
+import type { SessionData } from './types/session';
 
 // Per-passage data storage
 interface PassageData {
@@ -18,21 +20,32 @@ interface PassageData {
   isComplete: boolean;
   wrongAttempts: number;
   timeSpent: number; // Total time spent in milliseconds
+  selectedAnswer?: string;
+  feedbackText?: string;
 }
 
 export default function App() {
+  const navigate = useNavigate();
   const [passages, setPassages] = useState<Passage[]>([]);
   const [currentPassageIndex, setCurrentPassageIndex] = useState(0);
-  const currentPassage = passages[currentPassageIndex];
   const [trackingEnabled, setTrackingEnabled] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  const [debugMode, setDebugMode] = useState(false); // Debug mode to show heatmap to user
-  const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null); // For viewing full-size screenshots
-  //const [showRealtimeIndicator, setShowRealtimeIndicator] = useState(true);
+  const [debugMode, setDebugMode] = useState(false);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<string | null>(null);
+
+  // Session management
+  const [showLanding, setShowLanding] = useState(true);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [passageOrder, setPassageOrder] = useState<number[]>([]);
 
   // Per-passage data storage
   const [passageData, setPassageData] = useState<Record<number, PassageData>>({});
+
+  // Get current passage based on shuffled order
+  const currentPassage = passageOrder.length > 0 && passages.length > 0
+    ? passages[passageOrder[currentPassageIndex]]
+    : passages[currentPassageIndex];
 
   // Get current passage data or defaults
   const currentData = passageData[currentPassageIndex] || {
@@ -107,6 +120,53 @@ export default function App() {
     getPassages().then(setPassages);
   }, []);
 
+  // Handle starting quiz from landing page
+  const handleStartQuiz = (
+    newSessionId: string,
+    newPassageOrder: number[],
+    isResume: boolean,
+    resumeData?: SessionData
+  ) => {
+    setSessionId(newSessionId);
+    setPassageOrder(newPassageOrder);
+
+    if (isResume && resumeData) {
+      // Restore passage data from cloud
+      const restoredData: Record<number, PassageData> = {};
+      resumeData.passageResults.forEach((result) => {
+        // Find the last attempt for this passage to get feedback
+        const passageAttempts = resumeData.attempts
+          .filter(a => a.passage_index === result.passage_index)
+          .sort((a, b) => b.attempt_number - a.attempt_number);
+        const lastAttempt = passageAttempts[0];
+
+        restoredData[result.passage_index] = {
+          cursorHistory: [],
+          screenshot: result.screenshot || null,
+          isComplete: result.is_complete === 1,
+          wrongAttempts: result.wrong_attempts,
+          timeSpent: result.time_spent_ms,
+          selectedAnswer: result.final_selected_answer,
+          feedbackText: lastAttempt?.gemini_response || ''
+        };
+      });
+      setPassageData(restoredData);
+
+      // Find first incomplete passage
+      const firstIncomplete = newPassageOrder.findIndex(
+        (_, idx) => !restoredData[idx]?.isComplete
+      );
+      setCurrentPassageIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
+    } else {
+      setPassageData({});
+      setCurrentPassageIndex(0);
+    }
+
+    setShowLanding(false);
+    setTrackingEnabled(true);
+    passageStartTimeRef.current = Date.now();
+  };
+
   // Sync passageRef with ReadingComprehension's passage element
   useEffect(() => {
     const element = readingComprehensionRef.current?.getPassageElement();
@@ -132,23 +192,15 @@ export default function App() {
     if (readingComprehensionRef.current) {
       readingComprehensionRef.current.reset();
     }
-    // Clear all passage data
+    // Clear all state
     setPassageData({});
-    // Reset to first passage
     setCurrentPassageIndex(0);
-    // Hide summary
     setShowSummary(false);
-    // Start tracking again
-    setTrackingEnabled(true);
-    // Start timer for first passage
-    passageStartTimeRef.current = Date.now();
-    // Update passageRef after reset
-    setTimeout(() => {
-      const element = readingComprehensionRef.current?.getPassageElement();
-      if (element) {
-        passageRef.current = element;
-      }
-    }, 0);
+    setTrackingEnabled(false);
+    setSessionId(null);
+    setPassageOrder([]);
+    // Go back to landing
+    setShowLanding(true);
   };
 
   // Navigation between passages
@@ -201,9 +253,9 @@ export default function App() {
   };
 
   // Handle passage completion (correct answer)
-  const handlePassageComplete = async (wrongAttempts: number) => {
+  const handlePassageComplete = async (wrongAttempts: number, selectedAnswer: string) => {
     // Capture screenshot with heatmap before marking complete
-    await handleCaptureScreenshot();
+    const screenshot = await handleCaptureScreenshot();
 
     // Calculate final time for this passage
     let finalTimeSpent = passageData[currentPassageIndex]?.timeSpent || 0;
@@ -212,27 +264,64 @@ export default function App() {
       passageStartTimeRef.current = null; // Stop timer
     }
 
+    const updatedData = {
+      ...passageData[currentPassageIndex],
+      cursorHistory: passageData[currentPassageIndex]?.cursorHistory || currentData.cursorHistory,
+      screenshot: screenshot || passageData[currentPassageIndex]?.screenshot || null,
+      isComplete: true,
+      wrongAttempts,
+      timeSpent: finalTimeSpent
+    };
+
     setPassageData(prev => ({
       ...prev,
-      [currentPassageIndex]: {
-        ...prev[currentPassageIndex],
-        cursorHistory: prev[currentPassageIndex]?.cursorHistory || currentData.cursorHistory,
-        screenshot: prev[currentPassageIndex]?.screenshot || null,
-        isComplete: true,
-        wrongAttempts,
-        timeSpent: finalTimeSpent
-      }
+      [currentPassageIndex]: updatedData
     }));
+
+    // Save to cloud if we have a session
+    if (sessionId) {
+      try {
+        await apiService.savePassageResult(sessionId, currentPassageIndex, {
+          passageId: passageOrder[currentPassageIndex],
+          screenshot: updatedData.screenshot || '',
+          cursorHistory: updatedData.cursorHistory,
+          wrongAttempts,
+          timeSpentMs: finalTimeSpent,
+          selectedAnswer
+        });
+      } catch (err) {
+        console.error('Failed to save passage result:', err);
+      }
+    }
 
     // Check if all passages are complete
     const allComplete = passages.every((_, index) => {
-      if (index === currentPassageIndex) return true; // Current one is now complete
+      if (index === currentPassageIndex) return true;
       return passageData[index]?.isComplete === true;
     });
 
     if (allComplete) {
       setTrackingEnabled(false);
-      setShowSummary(true);
+
+      // Mark session complete in cloud and redirect to results
+      if (sessionId) {
+        const totalTime = Object.values(passageData).reduce(
+          (sum, data) => sum + (data?.timeSpent || 0), 0
+        ) + finalTimeSpent;
+
+        try {
+          await apiService.completeSession(sessionId, totalTime);
+          // Redirect to results page
+          navigate(`/results/${sessionId}`);
+        } catch (err) {
+          console.error('Failed to complete session:', err);
+          // Still redirect even if API fails - data is saved
+          navigate(`/results/${sessionId}`);
+        }
+      } else {
+        // No session - show local summary (fallback)
+        setShowSummary(true);
+      }
     }
   };
 
@@ -316,6 +405,11 @@ export default function App() {
       return null;
     }
   };
+
+  // Show landing page first
+  if (showLanding) {
+    return <LandingPage onStartQuiz={handleStartQuiz} />;
+  }
 
   // Loading state
   if (!currentPassage) {
@@ -534,6 +628,34 @@ export default function App() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
+
+            {/* Passage completion indicators */}
+            <div className="flex items-center gap-1 px-2">
+              {passages.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (trackingEnabled && idx !== currentPassageIndex) {
+                      accumulateTimeForCurrentPassage();
+                      setCurrentPassageIndex(idx);
+                      passageStartTimeRef.current = Date.now();
+                    }
+                  }}
+                  disabled={!trackingEnabled}
+                  className={`w-2.5 h-2.5 rounded-full transition-all ${
+                    idx === currentPassageIndex
+                      ? 'ring-2 ring-blue-400 ring-offset-1'
+                      : ''
+                  } ${
+                    passageData[idx]?.isComplete
+                      ? 'bg-green-500'
+                      : 'bg-gray-300'
+                  } ${trackingEnabled ? 'cursor-pointer hover:scale-125' : 'cursor-default'}`}
+                  title={`Passage ${idx + 1}${passageData[idx]?.isComplete ? ' (completed)' : ''}`}
+                />
+              ))}
+            </div>
+
             <Button
               variant="outline"
               size="sm"
@@ -596,6 +718,11 @@ export default function App() {
               onCaptureScreenshot={handleCaptureScreenshot}
               onPassageComplete={handlePassageComplete}
               trackingEnabled={trackingEnabled}
+              sessionId={sessionId}
+              currentPassageIndex={currentPassageIndex}
+              initialIsComplete={currentData.isComplete}
+              initialSelectedAnswer={currentData.selectedAnswer}
+              initialFeedback={currentData.feedbackText}
             />
           </div>
           
