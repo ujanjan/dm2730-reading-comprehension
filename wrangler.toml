@@ -4,14 +4,14 @@ compatibility_date = "2025-11-18"
 
 # D1 Database binding
 [[d1_databases]]
-binding = "DB"
+binding = "read_the_text_db"
 database_name = "read-the-text-db"
-database_id = "<run: npx wrangler d1 create read-the-text-db>"
+database_id = "d2787818-d467-449c-bce7-a5473e703841"
 
 # R2 Bucket binding
 [[r2_buckets]]
-binding = "STORAGE"
 bucket_name = "read-the-text-storage"
+binding = "read_the_text_storage"
 
 [env.production]
 # Production environment settings
