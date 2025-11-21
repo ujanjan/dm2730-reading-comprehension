@@ -187,13 +187,6 @@ export const ReadingComprehension = forwardRef<ReadingComprehensionHandle, Readi
               </p>
 
               <div className="min-w-0">
-                {!trackingEnabled && (
-                  <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                    <p className="text-xs text-yellow-800">
-                      Please click "Start The Quiz" to begin answering questions.
-                    </p>
-                  </div>
-                )}
                 <RadioGroup
                   value={selectedAnswer}
                   onValueChange={setSelectedAnswer}
