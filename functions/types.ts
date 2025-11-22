@@ -3,7 +3,8 @@
 export interface Env {
   read_the_text_db: D1Database;
   read_the_text_storage: R2Bucket;
-  ASSETS: Fetcher;
+  // Note: ASSETS binding removed - not available in Workers deployment
+  // Static assets are served by Cloudflare's platform before worker executes
 }
 
 // Helper functions
